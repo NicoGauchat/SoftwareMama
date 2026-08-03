@@ -1,7 +1,12 @@
-const API_URL = 'http://localhost:8080/api/v1'
+const API_URL = '/api/v1'
 
 async function request(path, options = {}) {
+  if (import.meta.env.VITE_DEMO_MODE === 'true') {
+    const { demoRequest } = await import('./demoApi')
+    return demoRequest(path, options)
+  }
   const response = await fetch(`${API_URL}${path}`, { headers: { 'Content-Type': 'application/json', ...options.headers }, ...options })
+  if (response.status === 401) window.dispatchEvent(new Event('softwaremama:auth-required'))
   if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'No se pudo conectar con el servidor.')
   return response.status === 204 ? null : response.json()
 }
@@ -9,7 +14,7 @@ async function request(path, options = {}) {
 export const getLessons = (date) => request(`/lessons?date=${date}`)
 export const getLessonsRange = (from, to) => request(`/lessons/range?from=${from}&to=${to}`)
 export const getTodayLessons = (date) => getLessons(date)
-export const createLesson = (data) => request('/lessons', { method: 'POST', body: JSON.stringify({ ...data, hourlyRate: Number(localStorage.getItem('hourlyPrice') || 0) }) })
+export const createLesson = (data) => request('/lessons', { method: 'POST', body: JSON.stringify(data) })
 export const completeLesson = (id, data) => request(`/lessons/${id}/complete`, { method: 'PATCH', body: JSON.stringify(data) })
 export const cancelLesson = (id) => request(`/lessons/${id}/cancel`, { method: 'PATCH' })
 export const rescheduleLesson = (id, date) => request(`/lessons/${id}/reschedule`, { method: 'PATCH', body: JSON.stringify({ date }) })
@@ -19,10 +24,7 @@ export const resetLessonPayment = (id) => request(`/lessons/${id}/payment/reset`
 export const registerBatchPayment = (lessonIds, amount, paymentMethod) => request('/payments', { method: 'POST', body: JSON.stringify({ lessonIds, amount, paymentMethod }) })
 
 export const getStudents = () => request('/students')
-export const createStudent = (data) => request('/students', { method: 'POST', body: JSON.stringify({
-  student: { ...data.student, hourlyRate: Number(localStorage.getItem('hourlyPrice') || 1) },
-  guardians: data.guardians,
-}) })
+export const createStudent = (data) => request('/students', { method: 'POST', body: JSON.stringify(data) })
 export const updateStudent = (id, data) => request(`/students/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
 export const deactivateStudent = (id) => request(`/students/${id}/inactive`, { method: 'PATCH' })
 export const activateStudent = (id) => request(`/students/${id}/active`, { method: 'PATCH' })
@@ -42,6 +44,9 @@ export const createSubject = (groupId, name) => request(`/school-groups/${groupI
 export const deleteSubject = (id) => request(`/subjects/${id}`, { method: 'DELETE' })
 export const createAssessment = (subjectId, data) => request(`/subjects/${subjectId}/assessments`, { method: 'POST', body: JSON.stringify(data) })
 export const deleteAssessment = (id) => request(`/assessments/${id}`, { method: 'DELETE' })
+
+export const getSettings = () => request('/settings')
+export const updateSettings = (data) => request('/settings', { method: 'PATCH', body: JSON.stringify(data) })
 
 export const getWeeklySchedules = () => request('/schedules')
 export const createWeeklySchedule = (data) => request('/schedules', { method: 'POST', body: JSON.stringify(data) })

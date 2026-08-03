@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   CalendarDays,
   GraduationCap,
@@ -33,6 +33,7 @@ export default function SchoolsView() {
   const [dialog, setDialog] = useState(null)
   const [notice, setNotice] = useState('')
   const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
 
   const load = async () => {
     try {
@@ -46,6 +47,8 @@ export default function SchoolsView() {
 
   const saveSchool = async (event) => {
     event.preventDefault()
+    if (savingRef.current) return
+    savingRef.current = true
     const form = new FormData(event.currentTarget)
     const data = {
       name: form.get('name'),
@@ -65,12 +68,15 @@ export default function SchoolsView() {
     } catch (error) {
       setNotice(error.message || 'No pude guardar la escuela.')
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
   }
 
   const saveExam = async (event) => {
     event.preventDefault()
+    if (savingRef.current) return
+    savingRef.current = true
     const form = new FormData(event.currentTarget)
     setSaving(true)
     try {
@@ -85,6 +91,7 @@ export default function SchoolsView() {
     } catch (error) {
       setNotice(error.message || 'No pude guardar la fecha del examen.')
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
   }
@@ -360,4 +367,3 @@ function Notice({ text, close }) {
     </div>
   )
 }
-

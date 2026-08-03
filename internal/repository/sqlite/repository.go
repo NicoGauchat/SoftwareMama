@@ -55,7 +55,7 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		`PRAGMA foreign_keys = ON`,
 		`CREATE TABLE IF NOT EXISTS students (
 			id TEXT PRIMARY KEY, name TEXT NOT NULL, school TEXT NOT NULL DEFAULT '',
-			grade INTEGER NOT NULL DEFAULT 0, hourly_rate REAL NOT NULL, notes TEXT NOT NULL DEFAULT '', is_active INTEGER NOT NULL DEFAULT 1, birth_date TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT ''
+			grade INTEGER NOT NULL DEFAULT 0, hourly_rate REAL NOT NULL, notes TEXT NOT NULL DEFAULT '', is_active INTEGER NOT NULL DEFAULT 1, birth_date TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE TABLE IF NOT EXISTS guardians (
 			id TEXT PRIMARY KEY, student_id TEXT NOT NULL, name TEXT NOT NULL, relationship TEXT NOT NULL, phone TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '',
@@ -116,6 +116,7 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	_, _ = db.ExecContext(ctx, `ALTER TABLE students ADD COLUMN birth_date TEXT NOT NULL DEFAULT ''`)
 	_, _ = db.ExecContext(ctx, `ALTER TABLE students ADD COLUMN phone TEXT NOT NULL DEFAULT ''`)
 	_, _ = db.ExecContext(ctx, `ALTER TABLE students ADD COLUMN email TEXT NOT NULL DEFAULT ''`)
+	_, _ = db.ExecContext(ctx, `ALTER TABLE students ADD COLUMN address TEXT NOT NULL DEFAULT ''`)
 	_, _ = db.ExecContext(ctx, `ALTER TABLE students ADD COLUMN grade INTEGER NOT NULL DEFAULT 0`)
 	_, _ = db.ExecContext(ctx, `ALTER TABLE guardians ADD COLUMN email TEXT NOT NULL DEFAULT ''`)
 	_, _ = db.ExecContext(ctx, `ALTER TABLE teacher_contacts ADD COLUMN email TEXT NOT NULL DEFAULT ''`)
@@ -207,12 +208,12 @@ func ensureAllSchoolGrades(ctx context.Context, db *sql.DB) error {
 type StudentRepository struct{ db *sql.DB }
 
 func (r *StudentRepository) Create(ctx context.Context, s domain.Student) error {
-	_, err := r.db.ExecContext(ctx, `INSERT INTO students (id,name,school,grade,hourly_rate,notes,is_active,birth_date,phone,email) VALUES (?,?,?,?,?,?,?,?,?,?)`, s.ID.String(), s.Name, s.School, s.Grade, s.HourlyRate, s.Notes, s.IsActive, dateString(s.BirthDate), s.Phone, s.Email)
+	_, err := r.db.ExecContext(ctx, `INSERT INTO students (id,name,school,grade,hourly_rate,notes,is_active,birth_date,phone,email,address) VALUES (?,?,?,?,?,?,?,?,?,?,?)`, s.ID.String(), s.Name, s.School, s.Grade, s.HourlyRate, s.Notes, s.IsActive, dateString(s.BirthDate), s.Phone, s.Email, s.Address)
 	return wrapWriteError(err)
 }
 
 func (r *StudentRepository) GetByID(ctx context.Context, id uuid.UUID) (domain.Student, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id,name,school,grade,hourly_rate,notes,is_active,birth_date,phone,email FROM students WHERE id = ?`, id.String())
+	row := r.db.QueryRowContext(ctx, `SELECT id,name,school,grade,hourly_rate,notes,is_active,birth_date,phone,email,address FROM students WHERE id = ?`, id.String())
 	student, err := scanStudent(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Student{}, domain.ErrNotFound
@@ -221,7 +222,7 @@ func (r *StudentRepository) GetByID(ctx context.Context, id uuid.UUID) (domain.S
 }
 
 func (r *StudentRepository) List(ctx context.Context) ([]domain.Student, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id,name,school,grade,hourly_rate,notes,is_active,birth_date,phone,email FROM students ORDER BY name ASC`)
+	rows, err := r.db.QueryContext(ctx, `SELECT id,name,school,grade,hourly_rate,notes,is_active,birth_date,phone,email,address FROM students ORDER BY name ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list students: %w", err)
 	}
@@ -239,7 +240,7 @@ func (r *StudentRepository) List(ctx context.Context) ([]domain.Student, error) 
 }
 
 func (r *StudentRepository) Update(ctx context.Context, s domain.Student) error {
-	result, err := r.db.ExecContext(ctx, `UPDATE students SET name=?,school=?,grade=?,hourly_rate=?,notes=?,is_active=?,birth_date=?,phone=?,email=? WHERE id=?`, s.Name, s.School, s.Grade, s.HourlyRate, s.Notes, s.IsActive, dateString(s.BirthDate), s.Phone, s.Email, s.ID.String())
+	result, err := r.db.ExecContext(ctx, `UPDATE students SET name=?,school=?,grade=?,hourly_rate=?,notes=?,is_active=?,birth_date=?,phone=?,email=?,address=? WHERE id=?`, s.Name, s.School, s.Grade, s.HourlyRate, s.Notes, s.IsActive, dateString(s.BirthDate), s.Phone, s.Email, s.Address, s.ID.String())
 	if err != nil {
 		return wrapWriteError(err)
 	}
@@ -721,7 +722,7 @@ func scanStudent(s scanner) (domain.Student, error) {
 	var student domain.Student
 	var id string
 	var birthDate string
-	if err := s.Scan(&id, &student.Name, &student.School, &student.Grade, &student.HourlyRate, &student.Notes, &student.IsActive, &birthDate, &student.Phone, &student.Email); err != nil {
+	if err := s.Scan(&id, &student.Name, &student.School, &student.Grade, &student.HourlyRate, &student.Notes, &student.IsActive, &birthDate, &student.Phone, &student.Email, &student.Address); err != nil {
 		return domain.Student{}, err
 	}
 	parsedID, err := uuid.Parse(id)

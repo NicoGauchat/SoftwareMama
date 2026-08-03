@@ -1,16 +1,28 @@
-# React + Vite
+# SoftwareMama Web
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Aplicación React desplegable como un único proyecto full-stack de Cloudflare
+Workers, con Turso como base de datos remota.
 
-Currently, two official plugins are available:
+## Comandos
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```powershell
+npm run dev          # Vite con recarga rápida; requiere Worker local en :8787
+npm run dev:worker   # API y archivos compilados en Wrangler
+npm run lint
+npm run build
+npm run check:worker
+npm run deploy
+```
 
-## React Compiler
+## Demo local para presentaciones
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```powershell
+npm run demo
+```
 
-## Expanding the Oxlint configuration
+Abre la interfaz con datos completamente ficticios guardados solamente en el
+navegador: alumnos, clases, cobros, escuelas, exámenes y maestras. No usa los
+secretos de Turso y no puede modificar la base de producción. El resumen
+mensual comienza en el mes anterior para mostrar un período completo.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+Ver [DEPLOY.md](DEPLOY.md) para la configuración inicial y los secretos.

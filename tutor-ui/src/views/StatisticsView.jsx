@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Banknote,
   BarChart3,
@@ -12,7 +12,7 @@ import {
   Users,
 } from 'lucide-react'
 import { BigButton, Field, PageTitle } from '../components/ui'
-import { getLessonsRange, getStudents } from '../services/api'
+import { getLessonsRange, getSettings, getStudents, updateSettings } from '../services/api'
 
 const MONTHS = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -45,10 +45,12 @@ export default function StatisticsView() {
   const [students, setStudents] = useState([])
   const [loading, setLoading] = useState(true)
   const [notice, setNotice] = useState('')
-  const [price, setPrice] = useState(() => Number(localStorage.getItem('hourlyPrice') || 0))
+  const [price, setPrice] = useState(0)
   const [target, setTarget] = useState(() => Number(localStorage.getItem('statisticsMonthlyGoal') || 0))
   const [draftPrice, setDraftPrice] = useState(String(price || ''))
   const [draftTarget, setDraftTarget] = useState(String(target || ''))
+  const [savingGoal, setSavingGoal] = useState(false)
+  const goalInFlight = useRef(false)
 
   const period = useMemo(() => {
     const today = new Date()
@@ -59,12 +61,15 @@ export default function StatisticsView() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [lessonList, studentList] = await Promise.all([
+        const [lessonList, studentList, settings] = await Promise.all([
           getLessonsRange(localDateKey(period.from), localDateKey(period.today)),
           getStudents(),
+          getSettings(),
         ])
         setLessons(lessonList)
         setStudents(studentList)
+        setPrice(Number(settings.hourlyPrice))
+        setDraftPrice(String(settings.hourlyPrice))
         setNotice('')
       } catch {
         setNotice('No pude cargar las estadísticas. Probá nuevamente en unos segundos.')
@@ -163,14 +168,30 @@ export default function StatisticsView() {
     return { classesPerMonth, classesPerWeek, remainingMoney, remainingClasses, plan }
   }, [data, price, target])
 
-  const saveGoal = (event) => {
+  const saveGoal = async (event) => {
     event.preventDefault()
+    if (goalInFlight.current) return
     const nextPrice = Math.max(0, Number(draftPrice || 0))
     const nextTarget = Math.max(0, Number(draftTarget || 0))
-    localStorage.setItem('hourlyPrice', String(nextPrice))
-    localStorage.setItem('statisticsMonthlyGoal', String(nextTarget))
-    setPrice(nextPrice)
-    setTarget(nextTarget)
+    if (nextPrice <= 0) {
+      setNotice('El precio por hora debe ser mayor a cero.')
+      return
+    }
+    goalInFlight.current = true
+    setSavingGoal(true)
+    try {
+      const settings = await updateSettings({ hourlyPrice: nextPrice })
+      localStorage.removeItem('hourlyPrice')
+      localStorage.setItem('statisticsMonthlyGoal', String(nextTarget))
+      setPrice(Number(settings.hourlyPrice))
+      setTarget(nextTarget)
+      setNotice('')
+    } catch (error) {
+      setNotice(error.message || 'No pude guardar el precio por hora.')
+    } finally {
+      goalInFlight.current = false
+      setSavingGoal(false)
+    }
   }
 
   if (loading) return <Loading />
@@ -239,9 +260,9 @@ export default function StatisticsView() {
           Escribí cuánto querés facturar. El cálculo supone clases de una hora y usa los días y horarios que mejor funcionaron hasta ahora.
         </p>
         <form onSubmit={saveGoal} className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
-          <Field label="Precio actual por hora" type="number" min="0" step="100" value={draftPrice} onChange={(event) => setDraftPrice(event.target.value)} placeholder="Ejemplo: 8000" required />
+          <Field label="Precio actual por hora" type="number" min="1" step="100" value={draftPrice} onChange={(event) => setDraftPrice(event.target.value)} placeholder="Ejemplo: 8000" required />
           <Field label="Quiero facturar por mes" type="number" min="0" step="1000" value={draftTarget} onChange={(event) => setDraftTarget(event.target.value)} placeholder="Ejemplo: 500000" required />
-          <BigButton className="bg-emerald-500 text-emerald-950"><Save /> Calcular</BigButton>
+          <BigButton disabled={savingGoal} className="bg-emerald-500 text-emerald-950 disabled:cursor-wait disabled:opacity-60"><Save /> {savingGoal ? 'Guardando...' : 'Calcular'}</BigButton>
         </form>
 
         {goal.classesPerMonth > 0 ? (

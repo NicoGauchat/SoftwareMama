@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Cake,
   ClipboardList,
   Mail,
+  MapPin,
   Pencil,
   Phone,
   Plus,
@@ -43,6 +44,7 @@ const blankForm = () => ({
   notes: '',
   phone: '',
   email: '',
+  address: '',
   guardians: [blankGuardian()],
 })
 const age = (value) => {
@@ -71,6 +73,7 @@ export default function StudentsView() {
   const [notice, setNotice] = useState('')
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
+  const saveInFlight = useRef(false)
   const [trackingStudent, setTrackingStudent] = useState(null)
   const [trackingFormOpen, setTrackingFormOpen] = useState(false)
   const [trackingError, setTrackingError] = useState('')
@@ -139,6 +142,7 @@ export default function StudentsView() {
       notes: student.notes || '',
       phone: student.phone || '',
       email: student.email || '',
+      address: student.address || '',
       guardians: guardians.map((guardian) => ({
         name: guardian.name || '',
         relationship: relationshipLabel(guardian.relationship),
@@ -150,6 +154,8 @@ export default function StudentsView() {
     setOpen(true)
   }
   const save = async () => {
+    if (saveInFlight.current) return
+    saveInFlight.current = true
     setSaving(true)
     try {
       const data = {
@@ -161,6 +167,7 @@ export default function StudentsView() {
           notes: form.notes,
           phone: form.phone,
           email: form.email,
+          address: form.address,
         },
         guardians: form.guardians,
       }
@@ -178,11 +185,13 @@ export default function StudentsView() {
         error.message || 'No pude guardar el alumno. Revisá los datos e intentá nuevamente.',
       )
     } finally {
+      saveInFlight.current = false
       setSaving(false)
     }
   }
   const confirmSave = (event) => {
     event.preventDefault()
+    if (saveInFlight.current || saving) return
     if (!form.guardians.length) {
       setFormError('Agregá por lo menos un tutor o familiar.')
       return
@@ -241,6 +250,8 @@ export default function StudentsView() {
 
   const saveStudentAssessment = async (event) => {
     event.preventDefault()
+    if (saveInFlight.current) return
+    saveInFlight.current = true
     const data = new FormData(event.currentTarget)
     const score = data.get('score')
     setSaving(true)
@@ -259,6 +270,7 @@ export default function StudentsView() {
     } catch (error) {
       setTrackingError(error.message || 'No pude guardar la evaluación.')
     } finally {
+      saveInFlight.current = false
       setSaving(false)
     }
   }
@@ -394,6 +406,15 @@ export default function StudentsView() {
               />
               <div className="sm:col-span-2">
                 <Field
+                  label="Dirección del alumno"
+                  name="address"
+                  value={form.address}
+                  onChange={change}
+                  placeholder="Ejemplo: Av. Siempre Viva 742"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <Field
                   as="textarea"
                   rows="4"
                   label="Observaciones / notas"
@@ -521,7 +542,7 @@ export default function StudentsView() {
                 </button>
               </div>
 
-              {(student.phone || student.email) && (
+              {(student.phone || student.email || student.address) && (
                 <div className="mt-5 flex flex-wrap gap-4 rounded-2xl bg-slate-800 p-4">
                   {student.phone && (
                     <a
@@ -538,6 +559,11 @@ export default function StudentsView() {
                     >
                       <Mail className="inline" /> {student.email}
                     </a>
+                  )}
+                  {student.address && (
+                    <p className="w-full text-lg font-bold text-indigo-100">
+                      <MapPin className="inline" /> {student.address}
+                    </p>
                   )}
                 </div>
               )}

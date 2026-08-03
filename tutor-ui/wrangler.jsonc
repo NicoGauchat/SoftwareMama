@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "software-mama",
+  "main": "./worker/index.js",
+  "compatibility_date": "2026-08-02",
+  "placement": { "mode": "smart" },
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/auth/*", "/health"]
+  },
+  "observability": { "enabled": true }
+}

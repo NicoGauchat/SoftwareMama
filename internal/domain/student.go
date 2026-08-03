@@ -16,4 +16,5 @@ type Student struct {
 	BirthDate  time.Time
 	Phone      string
 	Email      string
+	Address    string
 }

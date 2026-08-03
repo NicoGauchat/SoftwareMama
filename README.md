@@ -1,65 +1,43 @@
-# SoftwareMama API
+# Mis clases
 
-Backend Go para la gestión de clases particulares, organizado como Clean Architecture:
+Aplicación web full-stack creada para simplificar la gestión diaria de una
+profesora particular. El proyecto nació de una necesidad real: reemplazar
+anotaciones y procesos manuales por una herramienta sencilla, privada y
+accesible desde cualquier dispositivo.
 
-```
-cmd/api                  Composición de dependencias y servidor
-internal/domain          Entidades y reglas independientes
-internal/repository      Contratos y adaptador SQLite/Turso
-internal/usecase         Casos de uso
-internal/delivery/http   DTOs, handlers y rutas Gin
-pkg                      Utilidades reutilizables (reservado)
-```
+## Funcionalidades
 
-## Iniciar la aplicación
+- Agenda diaria y semanal de clases.
+- Administración de alumnos y familiares responsables.
+- Registro de asistencias, ausencias y reprogramaciones.
+- Control de pagos totales, parciales y mixtos.
+- Seguimiento de saldos pendientes por alumno.
+- Gestión de escuelas, grados, evaluaciones y contactos docentes.
+- Resúmenes mensuales y estadísticas de facturación y cobranza.
+- Exportación de reportes globales e individuales a Excel.
+- Acceso privado con persistencia de sesión.
 
-Abrí una terminal en la carpeta principal del proyecto e iniciá el backend:
+## Tecnologías
 
-```powershell
-go run ./cmd/api
-```
+- **Frontend:** React, Vite y Tailwind CSS.
+- **Backend y hosting:** Cloudflare Workers con Hono.
+- **Base de datos:** Turso, compatible con SQLite.
+- **Reportes:** generación de archivos Excel desde el navegador.
 
-Después abrí una segunda terminal e iniciá el frontend:
+La aplicación de producción vive íntegramente en [`tutor-ui`](tutor-ui). El
+servidor Go y las bases `.db` de la raíz se conservan únicamente como referencia
+de la primera versión local y no forman parte del despliegue de Cloudflare.
+
+## Demo local
+
+La demo incluye información completamente ficticia y nunca se conecta con la
+base de producción.
 
 ```powershell
 cd tutor-ui
 npm install
-npm run dev
+npm run demo
 ```
 
-El backend queda disponible en `http://localhost:8080` y el frontend en
-`http://localhost:5173`. `npm install` sólo es necesario la primera vez o cuando
-cambian las dependencias.
-
-Opcionalmente se puede indicar otra base de datos antes de iniciar el backend:
-
-```powershell
-$env:DATABASE_URL = "file:softwaremama.db"
-go run ./cmd/api
-```
-
-El backend usa un controlador SQLite escrito completamente en Go, por lo que no
-necesita instalar un compilador de C en Windows.
-
-## Endpoints
-
-| Método | Ruta | Función |
-| --- | --- | --- |
-| GET | `/health` | Estado del servicio |
-| GET | `/api/v1/lessons?date=2026-07-29` | Turnos de un día |
-| PATCH | `/api/v1/lessons/:id/complete` | Completar turno y calcular importe |
-| PATCH | `/api/v1/lessons/:id/reschedule` | Mover sólo el turno real |
-| PATCH | `/api/v1/lessons/:id/cancel` | Cancelar turno |
-| GET | `/api/v1/schools` | Escuelas con sus grados, materias y evaluaciones |
-| POST | `/api/v1/students/:id/assessments` | Agregar una evaluación al seguimiento individual |
-
-Ejemplo para completar:
-
-```json
-{
-  "realDurationMinutes": 60,
-  "attendance": "present",
-  "paymentStatus": "paid",
-  "topicNotes": "Fracciones y proporciones"
-}
-```
+Para conocer la configuración del Worker, los secretos y el proceso de
+publicación, consultá [tutor-ui/DEPLOY.md](tutor-ui/DEPLOY.md).

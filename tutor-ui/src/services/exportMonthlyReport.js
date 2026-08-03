@@ -1,4 +1,5 @@
 const ARS_FORMAT = '"$" #,##0.00'
+const REPORT_TIME_ZONE = 'America/Argentina/Buenos_Aires'
 const COLORS = {
   navy: '#0f172a',
   slate: '#334155',
@@ -70,13 +71,33 @@ const paymentMethodLabel = (value) => ({
   transfer: 'Transferencia',
   mixed: 'Mixto',
 }[value] || 'Sin especificar')
+const lessonDateParts = (value) => Object.fromEntries(
+  new Intl.DateTimeFormat('en-US', {
+    timeZone: REPORT_TIME_ZONE,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  }).formatToParts(new Date(value))
+    .filter((part) => part.type !== 'literal')
+    .map((part) => [part.type, Number(part.value)]),
+)
 const paymentTotalsFor = (lessons) => lessons
   .filter((lesson) => lesson.status === 'completed' && paidFor(lesson) > 0)
   .reduce((totals, lesson) => {
+    const paid = paidFor(lesson)
+    const cash = Number(lesson.cashPaidAmount)
+    const transfer = Number(lesson.transferPaidAmount)
+    if (Number.isFinite(cash) && Number.isFinite(transfer)) {
+      totals.cash += cash
+      totals.transfer += transfer
+      const unmatched = paid - cash - transfer
+      if (unmatched > 0.001) totals.unspecified += unmatched
+      return totals
+    }
     const method = ['cash', 'transfer', 'mixed'].includes(lesson.paymentMethod)
       ? lesson.paymentMethod
       : 'unspecified'
-    totals[method] += paidFor(lesson)
+    totals[method] += paid
     return totals
   }, { cash: 0, transfer: 0, mixed: 0, unspecified: 0 })
 
@@ -93,7 +114,7 @@ export async function exportMonthlyReport({
   const { default: writeXlsxFile } = await import('write-excel-file/browser')
   const subtitle = `${monthName} ${year} · Generado el ${new Date().toLocaleDateString('es-AR')}`
   const paymentTotals = paymentTotalsFor(lessons)
-  const summaryColumnCount = studentAccount ? 5 : 4
+  const summaryColumnCount = studentAccount ? 7 : 4
 
   const summaryRows = [
     [titleCell(reportTitle, summaryColumnCount), ...Array(summaryColumnCount - 1).fill(null)],
@@ -144,7 +165,7 @@ export async function exportMonthlyReport({
         : textCell('', background),
       type2 === 'empty' ? textCell('', background) : value(value2, type2),
     ]
-    if (studentAccount) row.push(textCell('', background))
+    while (row.length < summaryColumnCount) row.push(textCell('', background))
     summaryRows.push(row)
   })
   summaryRows.push([])
@@ -153,20 +174,22 @@ export async function exportMonthlyReport({
       headerCell('Clase'),
       headerCell('Valor de la clase'),
       headerCell('Pagó'),
+      headerCell('En efectivo'),
+      headerCell('Por transferencia'),
       headerCell('Método de pago'),
       headerCell('Debe'),
     ])
     studentAccount.lessons.forEach((lesson, index) => {
       const background = index % 2 ? COLORS.white : '#f8fafc'
-      const [, lessonMonth, lessonDay] = String(lesson.date)
-        .slice(0, 10)
-        .split('-')
+      const { month: lessonMonth, day: lessonDay } = lessonDateParts(lesson.date)
       const paid = paidFor(lesson)
       const due = Math.max(0, Number(lesson.amount || 0) - paid)
       summaryRows.push([
         textCell(`Clase ${Number(lessonDay)}/${Number(lessonMonth)}`, background),
         numberCell(lesson.amount, ARS_FORMAT, background),
         numberCell(paid, ARS_FORMAT, background),
+        numberCell(Number(lesson.cashPaidAmount || 0), ARS_FORMAT, background),
+        numberCell(Number(lesson.transferPaidAmount || 0), ARS_FORMAT, background),
         textCell(paid > 0 ? paymentMethodLabel(lesson.paymentMethod) : '—', background),
         {
           ...numberCell(due, ARS_FORMAT, background),
@@ -179,6 +202,8 @@ export async function exportMonthlyReport({
       { ...textCell('TOTAL', COLORS.paleBlue), fontWeight: 'bold', color: COLORS.navy },
       { ...numberCell(studentAccount.total, ARS_FORMAT, COLORS.paleBlue), fontWeight: 'bold' },
       { ...numberCell(studentAccount.paid, ARS_FORMAT, COLORS.paleBlue), fontWeight: 'bold' },
+      { ...numberCell(paymentTotals.cash, ARS_FORMAT, COLORS.paleBlue), fontWeight: 'bold' },
+      { ...numberCell(paymentTotals.transfer, ARS_FORMAT, COLORS.paleBlue), fontWeight: 'bold' },
       { ...textCell('—', COLORS.paleBlue), fontWeight: 'bold', align: 'center' },
       {
         ...numberCell(studentAccount.due, ARS_FORMAT, COLORS.paleBlue),
@@ -239,10 +264,10 @@ export async function exportMonthlyReport({
       const excused = lesson.attendance === 'absent_excused'
       const attendanceLabel = present ? 'Asistió' : excused ? 'Faltó y avisó' : 'Faltó'
       const background = index % 2 ? COLORS.white : '#f8fafc'
-      const dateText = String(lesson.date).slice(0, 10)
+      const { year: lessonYear, month: lessonMonth, day: lessonDay } = lessonDateParts(lesson.date)
       detailRows.push([
         {
-          value: new Date(`${dateText}T12:00:00`),
+          value: new Date(lessonYear, lessonMonth - 1, lessonDay, 12),
           type: Date,
           format: 'dd/mm/yyyy',
           height: 25,
@@ -254,6 +279,7 @@ export async function exportMonthlyReport({
           new Date(lesson.date).toLocaleTimeString('es-AR', {
             hour: '2-digit',
             minute: '2-digit',
+            timeZone: REPORT_TIME_ZONE,
           }),
           background,
         ),
@@ -290,7 +316,7 @@ export async function exportMonthlyReport({
       data: summaryRows,
       sheet: 'Resumen',
       columns: studentAccount
-        ? [{ width: 24 }, { width: 20 }, { width: 18 }, { width: 22 }, { width: 18 }]
+        ? [{ width: 24 }, { width: 20 }, { width: 18 }, { width: 18 }, { width: 22 }, { width: 22 }, { width: 18 }]
         : [{ width: 31 }, { width: 20 }, { width: 31 }, { width: 20 }],
     },
   ]

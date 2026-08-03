@@ -19,7 +19,11 @@ const DAYS = [
   'Lunes', 'Martes', 'Miércoles', 'Jueves',
   'Viernes', 'Sábado', 'Domingo',
 ]
-const dateKey = (date) => date.toISOString().slice(0, 10)
+const dateKey = (date) => [
+  date.getFullYear(),
+  String(date.getMonth() + 1).padStart(2, '0'),
+  String(date.getDate()).padStart(2, '0'),
+].join('-')
 const addDays = (date, count) => {
   const copy = new Date(date)
   copy.setDate(copy.getDate() + count)
@@ -57,6 +61,7 @@ export default function WeeklyView() {
   const [students, setStudents] = useState([])
   const [slot, setSlot] = useState(null)
   const [chosen, setChosen] = useState([])
+  const [addingStudents, setAddingStudents] = useState(false)
   const [search, setSearch] = useState('')
   const [dialog, setDialog] = useState(null)
   const [notice, setNotice] = useState('')
@@ -64,6 +69,7 @@ export default function WeeklyView() {
   const [outcome, setOutcome] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const todayRef = useRef(null)
+  const addingStudentsRef = useRef(false)
 
   const days = useMemo(
     () => Array.from(
@@ -107,7 +113,7 @@ export default function WeeklyView() {
   }
   const slotLessons = slot
     ? lessons.filter((lesson) => (
-      lesson.date.slice(0, 10) === dateKey(slot.day)
+      dateKey(new Date(lesson.date)) === dateKey(slot.day)
       && new Date(lesson.date).getHours() === Number(slot.hour.slice(0, 2))
       && lesson.status !== 'cancelled'
     ))
@@ -121,12 +127,15 @@ export default function WeeklyView() {
 
   const addStudents = async (event) => {
     event.preventDefault()
-    if (!chosen.length) return
+    if (!chosen.length || addingStudentsRef.current) return
+    addingStudentsRef.current = true
+    setAddingStudents(true)
     try {
       const [hour, minute] = slot.hour.split(':')
       const date = new Date(slot.day)
       date.setHours(Number(hour), Number(minute), 0, 0)
-      await Promise.all(chosen.map((studentId) => createLesson({
+      const selectedStudents = [...new Set(chosen)]
+      await Promise.all(selectedStudents.map((studentId) => createLesson({
         studentId,
         date: date.toISOString(),
         durationMinutes: 60,
@@ -134,11 +143,14 @@ export default function WeeklyView() {
       setSlot(null)
       setChosen([])
       setSearch('')
-      load()
+      await load()
     } catch {
       setNotice(
         'No pude agregar el turno. El alumno puede estar ya cargado en ese horario.',
       )
+    } finally {
+      addingStudentsRef.current = false
+      setAddingStudents(false)
     }
   }
   const removeLesson = async (lesson) => {
@@ -286,9 +298,9 @@ export default function WeeklyView() {
             </div>
             <BigButton
               className="mt-5 w-full bg-emerald-500 text-emerald-950"
-              disabled={!chosen.length}
+              disabled={!chosen.length || addingStudents}
             >
-              <Plus /> Guardar turno
+              <Plus /> {addingStudents ? 'Guardando…' : 'Guardar turno'}
             </BigButton>
           </form>
         </FormModal>
@@ -362,7 +374,7 @@ export default function WeeklyView() {
               {HOURS.map((hour) => {
                 const items = lessons.filter((lesson) => (
                   lesson.status !== 'cancelled'
-                  && lesson.date.slice(0, 10) === dateKey(day)
+                  && dateKey(new Date(lesson.date)) === dateKey(day)
                   && new Date(lesson.date).getHours() === Number(hour.slice(0, 2))
                 ))
                 return (

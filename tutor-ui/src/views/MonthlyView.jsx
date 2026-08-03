@@ -16,10 +16,12 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import FormModal from '../components/FormModal'
 import {
   getLessons,
+  getSettings,
   getStudents,
   registerBatchPayment,
   registerLessonPayment,
   resetLessonPayment,
+  updateSettings,
 } from '../services/api'
 import {
   exportMonthlyReport,
@@ -37,6 +39,9 @@ const MONTHS = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ]
 const NOW = new Date()
+const INITIAL_MONTH = import.meta.env.VITE_DEMO_MODE === 'true'
+  ? new Date(NOW.getFullYear(), NOW.getMonth() - 1, 1)
+  : NOW
 const monthDates = (year, month) => Array.from(
   { length: new Date(year, month + 1, 0).getDate() },
   (_, index) => new Date(year, month, index + 1).toISOString().slice(0, 10),
@@ -53,10 +58,10 @@ const paidFor = (lesson) => Number(
 const balanceFor = (lesson) => Math.max(0, Number(lesson.amount || 0) - paidFor(lesson))
 
 export default function MonthlyView() {
-  const [price, setPrice] = useState(() => localStorage.getItem('hourlyPrice') || '0')
+  const [price, setPrice] = useState('0')
   const [draftPrice, setDraftPrice] = useState(price)
-  const [month, setMonth] = useState(NOW.getMonth())
-  const [year, setYear] = useState(NOW.getFullYear())
+  const [month, setMonth] = useState(INITIAL_MONTH.getMonth())
+  const [year, setYear] = useState(INITIAL_MONTH.getFullYear())
   const [students, setStudents] = useState([])
   const [lessons, setLessons] = useState([])
   const [search, setSearch] = useState('')
@@ -77,10 +82,13 @@ export default function MonthlyView() {
   const dates = useMemo(() => monthDates(year, month), [year, month])
   const load = useCallback(async () => {
     try {
-      const [people, ...items] = await Promise.all([
+      const [settings, people, ...items] = await Promise.all([
+        getSettings(),
         getStudents(),
         ...dates.map(getLessons),
       ])
+      setPrice(String(settings.hourlyPrice))
+      setDraftPrice(String(settings.hourlyPrice))
       setStudents(people)
       setLessons(items.flat())
       setNotice('')
@@ -138,11 +146,18 @@ export default function MonthlyView() {
   const studentsWithDebt = accounts.filter((account) => account.due > 0).length
   const averagePerClass = billableLessons.length ? totalBilled / billableLessons.length : 0
 
-  const savePrice = () => {
-    localStorage.setItem('hourlyPrice', String(Number(draftPrice)))
-    setPrice(String(Number(draftPrice)))
-    setPriceModal(false)
-    setDialog(null)
+  const savePrice = async () => {
+    try {
+      const settings = await updateSettings({ hourlyPrice: Number(draftPrice) })
+      localStorage.removeItem('hourlyPrice')
+      setPrice(String(settings.hourlyPrice))
+      setDraftPrice(String(settings.hourlyPrice))
+      setPriceModal(false)
+      setDialog(null)
+    } catch (error) {
+      setDialog(null)
+      setNotice(error.message || 'No pude guardar el precio por hora.')
+    }
   }
   const openLessonPayment = (lesson) => {
     setPaymentError('')

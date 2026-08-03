@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   CalendarRange,
   Cake,
@@ -52,6 +52,7 @@ export default function TodayView() {
   const [students, setStudents] = useState([])
   const [schools, setSchools] = useState([])
   const [modal, setModal] = useState(null)
+  const moveInFlight = useRef(false)
   const [dialog, setDialog] = useState(null)
   const [notice, setNotice] = useState('')
   const todayKey = localDateKey(now)
@@ -108,16 +109,23 @@ export default function TodayView() {
 
   const saveMove = async (event) => {
     event.preventDefault()
+    if (moveInFlight.current) return
+    moveInFlight.current = true
     const form = new FormData(event.currentTarget)
     try {
+      const [year, month, day] = String(form.get('date')).split('-').map(Number)
+      const [hour, minute] = String(form.get('time')).split(':').map(Number)
+      const localDate = new Date(year, month - 1, day, hour, minute)
       await rescheduleLesson(
         modal.lesson.id,
-        `${form.get('date')}T${form.get('time')}:00Z`,
+        localDate.toISOString(),
       )
       setModal(null)
-      load()
+      await load()
     } catch {
       setNotice('No pude cambiar el horario.')
+    } finally {
+      moveInFlight.current = false
     }
   }
   const register = async (
@@ -396,7 +404,7 @@ export default function TodayView() {
                   <button
                     onClick={() => setDialog({
                       title: 'Editar registro',
-                      message: 'Se quitará temporalmente este resultado del resumen mensual para que puedas cargarlo de nuevo. ¿Continuar?',
+                      message: 'Se quitará temporalmente este resultado del resumen mensual. Los pagos parciales se conservarán y el pago final se actualizará según el nuevo resultado. ¿Continuar?',
                       confirmLabel: 'Sí, editar',
                       onConfirm: () => reopen(lesson),
                     })}

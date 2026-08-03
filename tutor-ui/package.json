@@ -5,11 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "demo": "vite --mode demo",
+    "dev:worker": "wrangler dev",
     "build": "vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "npm run build && wrangler deploy",
+    "check:worker": "wrangler deploy --dry-run"
   },
   "dependencies": {
+    "@tursodatabase/serverless": "^1.4.0",
+    "hono": "^4.12.33",
     "lucide-react": "^1.27.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
@@ -23,6 +29,7 @@
     "oxlint": "^1.71.0",
     "postcss": "^8.5.25",
     "tailwindcss": "^3.4.19",
-    "vite": "^8.1.1"
+    "vite": "^8.1.1",
+    "wrangler": "^4.118.0"
   }
 }

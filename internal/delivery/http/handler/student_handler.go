@@ -38,6 +38,7 @@ type studentInput struct {
 	BirthDate  string  `json:"birthDate" binding:"required"`
 	Phone      string  `json:"phone"`
 	Email      string  `json:"email"`
+	Address    string  `json:"address"`
 	Notes      string  `json:"notes"`
 }
 
@@ -78,6 +79,7 @@ type studentResponse struct {
 	BirthDate  string             `json:"birthDate"`
 	Phone      string             `json:"phone"`
 	Email      string             `json:"email"`
+	Address    string             `json:"address"`
 	Guardian   *guardianResponse  `json:"guardian,omitempty"`
 	Guardians  []guardianResponse `json:"guardians"`
 }
@@ -108,6 +110,7 @@ func (h *StudentHandler) createStudent(c *gin.Context) {
 		BirthDate:  birthDate,
 		Phone:      strings.TrimSpace(request.Student.Phone),
 		Email:      strings.TrimSpace(request.Student.Email),
+		Address:    strings.TrimSpace(request.Student.Address),
 	}
 	inputs := request.Guardians
 	if len(inputs) == 0 && request.Guardian != nil {
@@ -174,6 +177,7 @@ func (h *StudentHandler) updateStudent(c *gin.Context) {
 	student.BirthDate = birthDate
 	student.Phone = strings.TrimSpace(request.Student.Phone)
 	student.Email = strings.TrimSpace(request.Student.Email)
+	student.Address = strings.TrimSpace(request.Student.Address)
 	student.Notes = strings.TrimSpace(request.Student.Notes)
 	if student.Name == "" || student.Grade < 0 || student.Grade > 7 {
 		c.JSON(http.StatusBadRequest, errorResponse{Error: "student name is required"})
@@ -288,6 +292,7 @@ func toStudentResponse(student domain.Student, guardians []domain.Guardian) stud
 		BirthDate:  student.BirthDate.Format("2006-01-02"),
 		Phone:      student.Phone,
 		Email:      student.Email,
+		Address:    student.Address,
 		Guardians:  make([]guardianResponse, 0, len(guardians)),
 	}
 	for _, guardian := range guardians {

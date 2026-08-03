@@ -5,6 +5,7 @@ import {
   ContactRound,
   GraduationCap,
   School,
+  LogOut,
   UsersRound,
   WalletCards,
 } from 'lucide-react'
@@ -19,7 +20,7 @@ const tabs = [
   { id: 'statistics', label: 'Estadísticas', icon: BarChart3 },
 ]
 
-export default function Layout({ children, activeView, onChangeView }) {
+export default function Layout({ children, activeView, onChangeView, onLogout }) {
   return (
     <div className="app-shell min-h-screen bg-slate-950">
       <header className="app-header border-b border-slate-800 bg-slate-950">
@@ -30,6 +31,10 @@ export default function Layout({ children, activeView, onChangeView }) {
               <span className="block text-2xl font-bold text-white">Mis clases</span>
               <span className="brand-subtitle block text-sm font-semibold text-slate-400">Agenda, alumnos y progreso</span>
             </span>
+            <button onClick={onLogout} className="ml-auto flex items-center gap-2 rounded-xl bg-slate-800 px-3 py-2 text-sm font-bold text-slate-200 hover:bg-slate-700" title="Cerrar sesión">
+              <LogOut size={18} />
+              <span className="hidden sm:inline">Salir</span>
+            </button>
           </div>
           <nav aria-label="Secciones" className="app-nav mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
             {tabs.map(({ id, label, icon: Icon }) => (

@@ -1,0 +1,4 @@
+TURSO_DATABASE_URL="libsql://software-mama-tu-organizacion.turso.io"
+TURSO_AUTH_TOKEN="pegá_acá_el_token_de_turso"
+ADMIN_PASSWORD="elegí_una_contraseña_larga"
+SESSION_SECRET="generá_una_cadena_aleatoria_de_al_menos_32_caracteres"
