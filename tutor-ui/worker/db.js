@@ -1,6 +1,6 @@
-import { createClient } from '@tursodatabase/serverless/compat'
+import { createClient } from '@libsql/client/web'
 
-const schemaReady = new Set()
+const schemaInitializations = new Map()
 
 const initialTables = [
   `CREATE TABLE IF NOT EXISTS students (
@@ -140,6 +140,19 @@ async function recordMigration(db, version) {
   await db.execute(statement(`INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?,?)`, [version, new Date().toISOString()]))
 }
 
+async function ensureMigrationsTable(db) {
+  try {
+    await db.execute('SELECT version FROM schema_migrations LIMIT 1')
+  } catch (error) {
+    const message = String(error?.message || error)
+    if (!/no such table:\s*schema_migrations/i.test(message)) throw error
+
+    await db.execute(`CREATE TABLE schema_migrations (
+      version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL
+    )`)
+  }
+}
+
 async function migrateInitialSchema(db) {
   if (await migrationApplied(db, 1)) return
   await db.batch(initialTables, 'write')
@@ -177,18 +190,36 @@ async function migrateCloudSettingsAndAddress(db) {
   await recordMigration(db, 2)
 }
 
-export async function ensureSchema(env) {
-  const key = databaseKey(env)
-  const db = getDb(env)
-  await db.execute('PRAGMA foreign_keys = ON')
-  if (!schemaReady.has(key)) {
-    await db.execute(`CREATE TABLE IF NOT EXISTS schema_migrations (
-      version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL
-    )`)
-    await migrateInitialSchema(db)
-    await migrateCloudSettingsAndAddress(db)
-    schemaReady.add(key)
+async function initializeSchema(db) {
+  const step = async (label, action) => {
+    try {
+      return await action()
+    } catch (error) {
+      console.error(`Database initialization failed at: ${label}`, error)
+      throw error
+    }
   }
+  await step('schema migrations table', () => ensureMigrationsTable(db))
+  await step('initial schema migration', () => migrateInitialSchema(db))
+  await step('settings migration', () => migrateCloudSettingsAndAddress(db))
+}
+
+export async function ensureSchema(env) {
+  const db = getDb(env)
+
+  // Production requests must not depend on DDL/migration availability.
+  // Migrations can be enabled explicitly for a controlled deployment.
+  if (env.RUN_SCHEMA_MIGRATIONS !== 'true') return db
+
+  const key = databaseKey(env)
+  if (!schemaInitializations.has(key)) {
+    const initialization = initializeSchema(db).catch((error) => {
+      schemaInitializations.delete(key)
+      throw error
+    })
+    schemaInitializations.set(key, initialization)
+  }
+  await schemaInitializations.get(key)
   return db
 }
 

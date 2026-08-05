@@ -144,10 +144,61 @@ export function registerLessonRoutes(app) {
           lesson.paymentMethod = paymentMethod
           lesson.cashPaidAmount = paymentMethod === 'cash' ? lesson.amount : 0
           lesson.transferPaidAmount = paymentMethod === 'transfer' ? lesson.amount : 0
-        } else if (previousPayment.paymentStatus === 'pending' && previousPayment.paidAmount > 0) {
-          preservePartialPayment(lesson, previousPayment)
-        } else Object.assign(lesson, { paidAmount: 0, paymentMethod: '', cashPaidAmount: 0, transferPaidAmount: 0, paymentStatus: 'pending' })
+      } else if (previousPayment.paidAmount > 0) {
+        preservePartialPayment(lesson, previousPayment)
+      } else Object.assign(lesson, { paidAmount: 0, paymentMethod: '', cashPaidAmount: 0, transferPaidAmount: 0, paymentStatus: 'pending' })
       }
+      const saved = await saveLesson(db, lesson)
+      return saved ? c.json(saved) : changedElsewhere(c)
+    } catch (error) { return dbError(c, error) }
+  })
+
+  app.patch('/api/v1/lessons/:id/prepay', async (c) => {
+    const id = c.req.param('id')
+    const body = await jsonBody(c)
+    const method = text(body?.paymentMethod)
+    if (!isUuid(id) || !validPaymentMethod.has(method)) return c.json({ error: 'Elegí efectivo o transferencia.' }, 400)
+    try {
+      const db = requestDb(c)
+      const lesson = await findLesson(db, id)
+      if (!lesson) return notFound(c, 'Turno')
+      if (lesson.status !== 'scheduled' || new Date(lesson.date) <= new Date()) {
+        return c.json({ error: 'Sólo se pueden cobrar por adelantado los turnos futuros.' }, 409)
+      }
+      if (lesson.paidAmount > 0) return c.json({ error: 'Ese turno ya tiene un pago registrado.' }, 409)
+      lesson.amount = lesson.hourlyRate * lesson.realDurationMinutes / 60
+      if (lesson.amount <= 0) return c.json({ error: 'El turno no tiene un precio válido.' }, 409)
+      applyPayment(lesson, lesson.amount, method)
+      const saved = await saveLesson(db, lesson)
+      return saved ? c.json(saved) : changedElsewhere(c)
+    } catch (error) { return dbError(c, error) }
+  })
+
+  app.patch('/api/v1/lessons/:id/rate', async (c) => {
+    const id = c.req.param('id')
+    const body = await jsonBody(c)
+    const hourlyRate = number(body?.hourlyRate)
+    if (!isUuid(id) || hourlyRate <= 0) return c.json({ error: 'El precio por hora debe ser mayor a cero.' }, 400)
+    try {
+      const db = requestDb(c)
+      const lesson = await findLesson(db, id)
+      if (!lesson) return notFound(c, 'Turno')
+      if (lesson.status === 'cancelled') return c.json({ error: 'No se puede corregir el precio de un turno cancelado.' }, 409)
+
+      const previousPayment = {
+        paidAmount: lesson.paidAmount,
+        paymentMethod: lesson.paymentMethod,
+        cashPaidAmount: lesson.cashPaidAmount,
+        transferPaidAmount: lesson.transferPaidAmount,
+      }
+      lesson.hourlyRate = hourlyRate
+      if (chargeable(lesson)) {
+        lesson.amount = hourlyRate * lesson.realDurationMinutes / 60
+        preservePartialPayment(lesson, previousPayment)
+      } else if (lesson.status === 'completed') {
+        Object.assign(lesson, { amount: 0, paidAmount: 0, paymentMethod: '', cashPaidAmount: 0, transferPaidAmount: 0, paymentStatus: 'pending' })
+      }
+
       const saved = await saveLesson(db, lesson)
       return saved ? c.json(saved) : changedElsewhere(c)
     } catch (error) { return dbError(c, error) }
@@ -221,7 +272,9 @@ export function registerLessonRoutes(app) {
       const db = requestDb(c)
       const lesson = await findLesson(db, id)
       if (!lesson) return notFound(c, 'Turno')
-      if (!chargeable(lesson)) return c.json({ error: 'Ese turno no tiene un pago editable.' }, 409)
+      if (!(chargeable(lesson) || lesson.status === 'scheduled') || lesson.paidAmount <= 0) {
+        return c.json({ error: 'Ese turno no tiene un pago editable.' }, 409)
+      }
       Object.assign(lesson, { paidAmount: 0, paymentStatus: 'pending', paymentMethod: '', cashPaidAmount: 0, transferPaidAmount: 0 })
       const saved = await saveLesson(db, lesson)
       return saved ? c.json(saved) : changedElsewhere(c)

@@ -216,7 +216,7 @@ function finishLesson(lesson, input) {
       cashPaidAmount: input.paymentMethod === 'cash' ? lesson.amount : 0,
       transferPaidAmount: input.paymentMethod === 'transfer' ? lesson.amount : 0,
     })
-  } else if (previous.paymentStatus === 'pending' && previous.paidAmount > 0) {
+  } else if (previous.paidAmount > 0) {
     lesson.paidAmount = Math.min(previous.paidAmount, lesson.amount)
     lesson.paymentStatus = lesson.paidAmount >= lesson.amount ? 'paid' : 'pending'
   } else {
@@ -306,6 +306,25 @@ export async function demoRequest(path, options = {}) {
   } else if (parts[0] === 'lessons' && parts[1] && method === 'PATCH') {
     const lesson = state.lessons.find((item) => item.id === parts[1]) || notFound('Turno')
     if (parts[2] === 'complete') finishLesson(lesson, input)
+    else if (parts[2] === 'prepay') {
+      lesson.amount = lesson.hourlyRate * lesson.realDurationMinutes / 60
+      applyPayment(lesson, lesson.amount, input.paymentMethod)
+    }
+    else if (parts[2] === 'rate') {
+      const previousPaid = lesson.paidAmount
+      const paymentFactor = previousPaid > 0
+        ? Math.min(previousPaid, Number(input.hourlyRate) * lesson.realDurationMinutes / 60) / previousPaid
+        : 0
+      lesson.hourlyRate = Number(input.hourlyRate)
+      if (lesson.status === 'completed' && lesson.attendance !== 'absent_excused') {
+        lesson.amount = lesson.hourlyRate * lesson.realDurationMinutes / 60
+        lesson.paidAmount = Math.min(previousPaid, lesson.amount)
+        lesson.cashPaidAmount *= paymentFactor
+        lesson.transferPaidAmount *= paymentFactor
+        lesson.paymentStatus = lesson.paidAmount >= lesson.amount ? 'paid' : 'pending'
+      }
+      lesson.version += 1
+    }
     else if (parts[2] === 'reschedule') { lesson.date = new Date(input.date).toISOString(); lesson.version += 1 }
     else if (parts[2] === 'cancel') { lesson.status = 'cancelled'; lesson.version += 1 }
     else if (parts[2] === 'reopen') { lesson.status = 'scheduled'; lesson.version += 1 }

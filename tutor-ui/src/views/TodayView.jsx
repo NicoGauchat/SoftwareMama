@@ -4,6 +4,7 @@ import {
   Cake,
   CheckCircle2,
   Clock3,
+  DollarSign,
   Pencil,
   Sparkles,
   Trash2,
@@ -21,6 +22,7 @@ import {
   getTodayLessons,
   reopenLesson,
   rescheduleLesson,
+  updateLessonRate,
 } from '../services/api'
 
 const localDateKey = (date) => [
@@ -126,6 +128,21 @@ export default function TodayView() {
       setNotice('No pude cambiar el horario.')
     } finally {
       moveInFlight.current = false
+    }
+  }
+  const saveRate = async (event) => {
+    event.preventDefault()
+    const hourlyRate = Number(new FormData(event.currentTarget).get('hourlyRate'))
+    if (hourlyRate <= 0) {
+      setNotice('El precio por hora debe ser mayor a cero.')
+      return
+    }
+    try {
+      await updateLessonRate(modal.lesson.id, hourlyRate)
+      setModal(null)
+      await load()
+    } catch (error) {
+      setNotice(error.message || 'No pude corregir el precio del turno.')
     }
   }
   const register = async (
@@ -291,6 +308,29 @@ export default function TodayView() {
         </FormModal>
       )}
 
+      {modal?.type === 'rate' && (
+        <FormModal title="Corregir precio del turno" onClose={() => setModal(null)}>
+          <form onSubmit={saveRate}>
+            <p className="mb-5 text-xl text-slate-300">
+              Este cambio se aplica solamente al turno de {studentName(modal.lesson.studentId)}
+              {' '}y vuelve a calcular su importe y su deuda.
+            </p>
+            <Field
+              label="Precio por hora correcto"
+              name="hourlyRate"
+              type="number"
+              min="1"
+              step="1"
+              defaultValue={modal.lesson.hourlyRate}
+              required
+            />
+            <BigButton className="mt-5 w-full bg-emerald-500 text-emerald-950">
+              Guardar precio correcto
+            </BigButton>
+          </form>
+        </FormModal>
+      )}
+
       <section className="mt-6 rounded-3xl border border-indigo-500/40 bg-indigo-500/10 p-6">
         <h2 className="flex gap-2 text-2xl font-bold text-white">
           <Cake /> Cumpleaños de {now.toLocaleDateString('es-AR', { month: 'long' })}
@@ -375,6 +415,12 @@ export default function TodayView() {
                       <Pencil className="inline" /> Cambiar horario
                     </button>
                     <button
+                      onClick={() => setModal({ type: 'rate', lesson })}
+                      className="text-lg font-bold text-amber-300"
+                    >
+                      <DollarSign className="inline" /> Corregir precio
+                    </button>
+                    <button
                       onClick={() => setDialog({
                         title: 'Cancelar turno',
                         message: `¿Seguro que querés cancelar el turno de ${studentName(lesson.studentId)}?`,
@@ -411,6 +457,12 @@ export default function TodayView() {
                     className="mt-4 text-lg font-bold text-indigo-300"
                   >
                     <Pencil className="inline" /> Editar registro
+                  </button>
+                  <button
+                    onClick={() => setModal({ type: 'rate', lesson })}
+                    className="ml-5 mt-4 text-lg font-bold text-amber-300"
+                  >
+                    <DollarSign className="inline" /> Corregir precio
                   </button>
                 </div>
               )}

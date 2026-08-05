@@ -16,6 +16,8 @@ export const getLessonsRange = (from, to) => request(`/lessons/range?from=${from
 export const getTodayLessons = (date) => getLessons(date)
 export const createLesson = (data) => request('/lessons', { method: 'POST', body: JSON.stringify(data) })
 export const completeLesson = (id, data) => request(`/lessons/${id}/complete`, { method: 'PATCH', body: JSON.stringify(data) })
+export const prepayLesson = (id, paymentMethod) => request(`/lessons/${id}/prepay`, { method: 'PATCH', body: JSON.stringify({ paymentMethod }) })
+export const updateLessonRate = (id, hourlyRate) => request(`/lessons/${id}/rate`, { method: 'PATCH', body: JSON.stringify({ hourlyRate }) })
 export const cancelLesson = (id) => request(`/lessons/${id}/cancel`, { method: 'PATCH' })
 export const rescheduleLesson = (id, date) => request(`/lessons/${id}/reschedule`, { method: 'PATCH', body: JSON.stringify({ date }) })
 export const reopenLesson = (id) => request(`/lessons/${id}/reopen`, { method: 'PATCH' })

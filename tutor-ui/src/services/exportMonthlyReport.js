@@ -81,6 +81,54 @@ const lessonDateParts = (value) => Object.fromEntries(
     .filter((part) => part.type !== 'literal')
     .map((part) => [part.type, Number(part.value)]),
 )
+const lessonDateKey = (value) => {
+  const { year, month, day } = lessonDateParts(value)
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+export const groupStudentLessonsByDay = (lessons) => {
+  const groups = new Map()
+  lessons.forEach((lesson) => {
+    const key = lessonDateKey(lesson.date)
+    if (!groups.has(key)) {
+      groups.set(key, {
+        date: lesson.date,
+        lessonCount: 0,
+        realDurationMinutes: 0,
+        amount: 0,
+        paidAmount: 0,
+        cashPaidAmount: 0,
+        transferPaidAmount: 0,
+        paymentMethods: new Set(),
+      })
+    }
+    const group = groups.get(key)
+    group.lessonCount += 1
+    group.realDurationMinutes += Number(lesson.realDurationMinutes || 60)
+    group.amount += Number(lesson.amount || 0)
+    group.paidAmount += paidFor(lesson)
+    group.cashPaidAmount += Number(lesson.cashPaidAmount || 0)
+    group.transferPaidAmount += Number(lesson.transferPaidAmount || 0)
+    if (lesson.paymentMethod) group.paymentMethods.add(lesson.paymentMethod)
+  })
+
+  return [...groups.values()].map((group) => {
+    const hasCash = group.cashPaidAmount > 0
+    const hasTransfer = group.transferPaidAmount > 0
+    let paymentMethod = ''
+    if ((hasCash && hasTransfer) || group.paymentMethods.has('mixed') || group.paymentMethods.size > 1) {
+      paymentMethod = 'mixed'
+    } else if (hasCash) paymentMethod = 'cash'
+    else if (hasTransfer) paymentMethod = 'transfer'
+    else if (group.paymentMethods.size === 1) paymentMethod = [...group.paymentMethods][0]
+    return { ...group, paymentMethod }
+  })
+}
+
+const durationLabel = (minutes) => {
+  const hours = Number(minutes || 0) / 60
+  return `${hours.toLocaleString('es-AR', { maximumFractionDigits: 2 })} h`
+}
 const paymentTotalsFor = (lessons) => lessons
   .filter((lesson) => lesson.status === 'completed' && paidFor(lesson) > 0)
   .reduce((totals, lesson) => {
@@ -179,13 +227,16 @@ export async function exportMonthlyReport({
       headerCell('Método de pago'),
       headerCell('Debe'),
     ])
-    studentAccount.lessons.forEach((lesson, index) => {
+    groupStudentLessonsByDay(studentAccount.lessons).forEach((lesson, index) => {
       const background = index % 2 ? COLORS.white : '#f8fafc'
       const { month: lessonMonth, day: lessonDay } = lessonDateParts(lesson.date)
       const paid = paidFor(lesson)
       const due = Math.max(0, Number(lesson.amount || 0) - paid)
+      const lessonLabel = lesson.lessonCount > 1
+        ? `Clases ${Number(lessonDay)}/${Number(lessonMonth)} · ${durationLabel(lesson.realDurationMinutes)}`
+        : `Clase ${Number(lessonDay)}/${Number(lessonMonth)} · ${durationLabel(lesson.realDurationMinutes)}`
       summaryRows.push([
-        textCell(`Clase ${Number(lessonDay)}/${Number(lessonMonth)}`, background),
+        textCell(lessonLabel, background),
         numberCell(lesson.amount, ARS_FORMAT, background),
         numberCell(paid, ARS_FORMAT, background),
         numberCell(Number(lesson.cashPaidAmount || 0), ARS_FORMAT, background),

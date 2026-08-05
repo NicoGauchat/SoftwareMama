@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CalendarCheck, ChevronLeft, ChevronRight, Plus, Trash2, Users } from 'lucide-react'
+import { Banknote, CalendarCheck, ChevronLeft, ChevronRight, Plus, Trash2, Undo2, Users } from 'lucide-react'
 import { BigButton, Field, PageTitle } from '../components/ui'
 import ConfirmDialog from '../components/ConfirmDialog'
 import FormModal from '../components/FormModal'
@@ -9,6 +9,8 @@ import {
   createLesson,
   getLessons,
   getStudents,
+  prepayLesson,
+  resetLessonPayment,
 } from '../services/api'
 
 const HOURS = [
@@ -43,7 +45,9 @@ const shortName = (name = 'Alumno') => {
   const parts = name.trim().split(/\s+/)
   return parts.length > 1 ? `${parts[0]} ${parts.at(-1)[0]}.` : parts[0]
 }
+const money = (value) => `$${Number(value || 0).toLocaleString('es-AR')}`
 const RESULT_OPTIONS = [
+  { value: 'present_prepaid', label: 'Asistió (ya estaba pagada)', attendance: 'present', paymentStatus: 'pending' },
   { value: 'present_paid', label: 'Asistió y pagó', attendance: 'present', paymentStatus: 'paid' },
   { value: 'present_pending', label: 'Asistió y debe', attendance: 'present', paymentStatus: 'pending' },
   { value: 'absent_unexcused', label: 'Faltó (se cobra)', attendance: 'absent_unexcused', paymentStatus: 'pending' },
@@ -68,6 +72,9 @@ export default function WeeklyView() {
   const [resultLesson, setResultLesson] = useState(null)
   const [outcome, setOutcome] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('cash')
+  const [advanceLesson, setAdvanceLesson] = useState(null)
+  const [advancePaymentMethod, setAdvancePaymentMethod] = useState('cash')
+  const [savingAdvance, setSavingAdvance] = useState(false)
   const todayRef = useRef(null)
   const addingStudentsRef = useRef(false)
 
@@ -124,6 +131,9 @@ export default function WeeklyView() {
     && !existingIds.has(student.id)
     && student.name.toLowerCase().includes(search.toLowerCase())
   ))
+  const visibleResultOptions = Number(resultLesson?.paidAmount || 0) > 0
+    ? RESULT_OPTIONS.filter((option) => !['present_paid', 'present_pending'].includes(option.value))
+    : RESULT_OPTIONS.filter((option) => option.value !== 'present_prepaid')
 
   const addStudents = async (event) => {
     event.preventDefault()
@@ -183,6 +193,41 @@ export default function WeeklyView() {
     setOutcome('')
     setPaymentMethod('cash')
   }
+  const openAdvancePayment = (lesson) => {
+    setAdvanceLesson(lesson)
+    setAdvancePaymentMethod('cash')
+  }
+  const saveAdvancePayment = async (event) => {
+    event.preventDefault()
+    if (!advanceLesson || savingAdvance) return
+    setSavingAdvance(true)
+    try {
+      await prepayLesson(advanceLesson.id, advancePaymentMethod)
+      setAdvanceLesson(null)
+      await load()
+    } catch (error) {
+      setNotice(error.message || 'No pude registrar el pago adelantado.')
+    } finally {
+      setSavingAdvance(false)
+    }
+  }
+  const resetAdvancePayment = async (lesson) => {
+    try {
+      await resetLessonPayment(lesson.id)
+      setDialog(null)
+      await load()
+    } catch (error) {
+      setDialog(null)
+      setNotice(error.message || 'No pude anular el pago adelantado.')
+    }
+  }
+  const askResetAdvancePayment = (lesson) => setDialog({
+    title: 'Anular pago adelantado',
+    message: `¿Confirmás que querés anular el pago adelantado de ${studentName(lesson)}?`,
+    confirmLabel: 'Sí, anular pago',
+    danger: true,
+    onConfirm: () => resetAdvancePayment(lesson),
+  })
   const saveResult = async (lesson, selected) => {
     try {
       await completeLesson(lesson.id, {
@@ -328,7 +373,7 @@ export default function WeeklyView() {
                 required
               >
                 <option value="">Elegí qué pasó</option>
-                {RESULT_OPTIONS.map((option) => (
+                {visibleResultOptions.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </select>
@@ -351,6 +396,43 @@ export default function WeeklyView() {
               disabled={!outcome}
             >
               <CalendarCheck /> Registrar resultado
+            </BigButton>
+          </form>
+        </FormModal>
+      )}
+
+      {advanceLesson && (
+        <FormModal
+          title="Cobrar por adelantado"
+          onClose={() => setAdvanceLesson(null)}
+        >
+          <form onSubmit={saveAdvancePayment}>
+            <p className="text-xl text-slate-300">
+              {studentName(advanceLesson)} ·{' '}
+              {new Date(advanceLesson.date).toLocaleDateString('es-AR', {
+                day: 'numeric',
+                month: 'long',
+              })}
+            </p>
+            <p className="mt-3 text-3xl font-bold text-emerald-300">
+              {money(Number(advanceLesson.hourlyRate) * Number(advanceLesson.realDurationMinutes || 60) / 60)}
+            </p>
+            <label className="mt-5 block text-lg font-semibold text-slate-200">
+              Medio de pago
+              <select
+                value={advancePaymentMethod}
+                onChange={(event) => setAdvancePaymentMethod(event.target.value)}
+                className="mt-2 min-h-14 w-full rounded-xl border border-slate-600 bg-slate-800 px-4 text-lg text-white"
+              >
+                <option value="cash">Efectivo</option>
+                <option value="transfer">Transferencia</option>
+              </select>
+            </label>
+            <BigButton
+              className="mt-6 w-full bg-emerald-500 text-emerald-950"
+              disabled={savingAdvance}
+            >
+              <Banknote /> {savingAdvance ? 'Registrando…' : 'Confirmar cobro adelantado'}
             </BigButton>
           </form>
         </FormModal>
@@ -395,7 +477,7 @@ export default function WeeklyView() {
                             <p className="text-lg font-bold text-emerald-100">
                               {name}
                             </p>
-                            {lesson.status === 'scheduled' && (
+                            {lesson.status === 'scheduled' && Number(lesson.paidAmount || 0) <= 0 && (
                               <button
                                 onClick={() => askRemove(lesson, day, hour)}
                                 className="flex min-h-11 items-center gap-1 rounded-lg bg-rose-500/20 px-3 text-base font-bold text-rose-200"
@@ -410,6 +492,29 @@ export default function WeeklyView() {
                               </span>
                             )}
                           </div>
+                          {lesson.status === 'scheduled'
+                            && new Date(lesson.date) > new Date()
+                            && Number(lesson.paidAmount || 0) <= 0 && (
+                            <button
+                              onClick={() => openAdvancePayment(lesson)}
+                              className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 px-3 text-base font-bold text-emerald-950"
+                            >
+                              <Banknote size={18} /> Cobrar por adelantado
+                            </button>
+                          )}
+                          {lesson.status === 'scheduled' && Number(lesson.paidAmount || 0) > 0 && (
+                            <div className="mt-3 rounded-lg border border-emerald-400/40 bg-emerald-500/15 p-3">
+                              <p className="text-center text-base font-bold text-emerald-200">
+                                Pagada por adelantado · {money(lesson.paidAmount)}
+                              </p>
+                              <button
+                                onClick={() => askResetAdvancePayment(lesson)}
+                                className="mt-2 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-slate-700 px-3 text-sm font-bold text-slate-200"
+                              >
+                                <Undo2 size={16} /> Anular adelanto
+                              </button>
+                            </div>
+                          )}
                           {lesson.status === 'scheduled' && dateKey(day) <= dateKey(new Date()) && (
                             <button
                               onClick={() => openResult(lesson)}

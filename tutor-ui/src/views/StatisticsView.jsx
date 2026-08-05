@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Banknote,
   BarChart3,
@@ -6,13 +6,14 @@ import {
   Clock3,
   Goal,
   Lightbulb,
-  Save,
+  Calculator,
   TrendingUp,
   UserRoundCheck,
   Users,
+  XCircle,
 } from 'lucide-react'
 import { BigButton, Field, PageTitle } from '../components/ui'
-import { getLessonsRange, getSettings, getStudents, updateSettings } from '../services/api'
+import { getLessonsRange, getSettings, getStudents } from '../services/api'
 
 const MONTHS = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -47,10 +48,7 @@ export default function StatisticsView() {
   const [notice, setNotice] = useState('')
   const [price, setPrice] = useState(0)
   const [target, setTarget] = useState(() => Number(localStorage.getItem('statisticsMonthlyGoal') || 0))
-  const [draftPrice, setDraftPrice] = useState(String(price || ''))
   const [draftTarget, setDraftTarget] = useState(String(target || ''))
-  const [savingGoal, setSavingGoal] = useState(false)
-  const goalInFlight = useRef(false)
 
   const period = useMemo(() => {
     const today = new Date()
@@ -69,7 +67,6 @@ export default function StatisticsView() {
         setLessons(lessonList)
         setStudents(studentList)
         setPrice(Number(settings.hourlyPrice))
-        setDraftPrice(String(settings.hourlyPrice))
         setNotice('')
       } catch {
         setNotice('No pude cargar las estadísticas. Probá nuevamente en unos segundos.')
@@ -89,6 +86,7 @@ export default function StatisticsView() {
       const items = completed.filter((lesson) => monthKey(new Date(lesson.date)) === key)
       const billedItems = items.filter(isBillable)
       const attended = items.filter((lesson) => lesson.attendance === 'present').length
+      const absences = items.length - attended
       const billed = billedItems.reduce((sum, lesson) => sum + Number(lesson.amount || 0), 0)
       const paid = billedItems.reduce((sum, lesson) => sum + paidFor(lesson), 0)
       return {
@@ -98,6 +96,7 @@ export default function StatisticsView() {
         students: new Set(items.map((lesson) => lesson.studentId)).size,
         classes: items.length,
         attended,
+        absences,
         attendance: items.length ? attended / items.length : 0,
         billed,
         paid,
@@ -168,30 +167,16 @@ export default function StatisticsView() {
     return { classesPerMonth, classesPerWeek, remainingMoney, remainingClasses, plan }
   }, [data, price, target])
 
-  const saveGoal = async (event) => {
+  const saveGoal = (event) => {
     event.preventDefault()
-    if (goalInFlight.current) return
-    const nextPrice = Math.max(0, Number(draftPrice || 0))
     const nextTarget = Math.max(0, Number(draftTarget || 0))
-    if (nextPrice <= 0) {
+    if (price <= 0) {
       setNotice('El precio por hora debe ser mayor a cero.')
       return
     }
-    goalInFlight.current = true
-    setSavingGoal(true)
-    try {
-      const settings = await updateSettings({ hourlyPrice: nextPrice })
-      localStorage.removeItem('hourlyPrice')
-      localStorage.setItem('statisticsMonthlyGoal', String(nextTarget))
-      setPrice(Number(settings.hourlyPrice))
-      setTarget(nextTarget)
-      setNotice('')
-    } catch (error) {
-      setNotice(error.message || 'No pude guardar el precio por hora.')
-    } finally {
-      goalInFlight.current = false
-      setSavingGoal(false)
-    }
+    localStorage.setItem('statisticsMonthlyGoal', String(nextTarget))
+    setTarget(nextTarget)
+    setNotice('')
   }
 
   if (loading) return <Loading />
@@ -211,9 +196,10 @@ export default function StatisticsView() {
       {notice && <Notice text={notice} />}
 
       <h2 className="mt-9 text-3xl font-bold text-white">Este mes, de un vistazo</h2>
-      <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Metric icon={Users} label="Alumnos activos" value={activeStudents} help="Alumnos que hoy siguen tomando clases." />
-        <Metric icon={CalendarCheck} label="Clases dadas" value={data.current?.classes || 0} help="Incluye asistencias y faltas registradas." />
+        <Metric icon={CalendarCheck} label="Clases dadas" value={data.current?.attended || 0} help="Sólo cuenta las clases a las que asistieron." />
+        <Metric icon={XCircle} label="Inasistencias" value={data.current?.absences || 0} help="Incluye faltas con y sin aviso." />
         <Metric icon={UserRoundCheck} label="Asistencia" value={currentAttendance} help="Porcentaje de clases a las que asistieron." />
         <Metric icon={Banknote} label="Facturado" value={money(data.current?.billed)} help={`Cobrado: ${money(data.current?.paid)} · Pendiente: ${money(data.current?.due)}`} />
       </div>
@@ -260,10 +246,13 @@ export default function StatisticsView() {
           Escribí cuánto querés facturar. El cálculo supone clases de una hora y usa los días y horarios que mejor funcionaron hasta ahora.
         </p>
         <form onSubmit={saveGoal} className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
-          <Field label="Precio actual por hora" type="number" min="1" step="100" value={draftPrice} onChange={(event) => setDraftPrice(event.target.value)} placeholder="Ejemplo: 8000" required />
+          <Field label="Precio actual por hora" value={money(price)} disabled />
           <Field label="Quiero facturar por mes" type="number" min="0" step="1000" value={draftTarget} onChange={(event) => setDraftTarget(event.target.value)} placeholder="Ejemplo: 500000" required />
-          <BigButton disabled={savingGoal} className="bg-emerald-500 text-emerald-950 disabled:cursor-wait disabled:opacity-60"><Save /> {savingGoal ? 'Guardando...' : 'Calcular'}</BigButton>
+          <BigButton className="bg-emerald-500 text-emerald-950"><Calculator /> Calcular</BigButton>
         </form>
+        <p className="mt-3 text-base text-slate-300">
+          El precio por hora se modifica desde Resumen Mensual.
+        </p>
 
         {goal.classesPerMonth > 0 ? (
           <div className="mt-8">
