@@ -104,6 +104,16 @@ export function registerLessonRoutes(app) {
     } catch (error) { return dbError(c, error) }
   })
 
+  app.delete('/api/v1/lessons/:id', async (c) => {
+    const id = c.req.param('id')
+    if (!isUuid(id)) return c.json({ error: 'ID de turno inválido.' }, 400)
+    try {
+      const result = await requestDb(c).execute(statement('DELETE FROM lessons WHERE id=?', [id]))
+      if (!result.rowsAffected) return notFound(c, 'Turno')
+      return c.body(null, 204)
+    } catch (error) { return dbError(c, error) }
+  })
+
   app.patch('/api/v1/lessons/:id/complete', async (c) => {
     const id = c.req.param('id')
     if (!isUuid(id)) return c.json({ error: 'ID de turno inválido.' }, 400)

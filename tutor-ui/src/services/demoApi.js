@@ -303,6 +303,9 @@ export async function demoRequest(path, options = {}) {
       paymentMethod: '', cashPaidAmount: 0, transferPaidAmount: 0, topicNotes: '', version: 0,
     }
     state.lessons.push(result)
+  } else if (method === 'DELETE' && parts[0] === 'lessons') {
+    state.lessons = state.lessons.filter((item) => item.id !== parts[1])
+    result = null
   } else if (parts[0] === 'lessons' && parts[1] && method === 'PATCH') {
     const lesson = state.lessons.find((item) => item.id === parts[1]) || notFound('Turno')
     if (parts[2] === 'complete') finishLesson(lesson, input)

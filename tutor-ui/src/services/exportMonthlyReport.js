@@ -104,7 +104,9 @@ export const groupStudentLessonsByDay = (lessons) => {
     }
     const group = groups.get(key)
     group.lessonCount += 1
-    group.realDurationMinutes += Number(lesson.realDurationMinutes || 60)
+    if (lesson.attendance === 'present') {
+      group.realDurationMinutes += Number(lesson.realDurationMinutes || 60)
+    }
     group.amount += Number(lesson.amount || 0)
     group.paidAmount += paidFor(lesson)
     group.cashPaidAmount += Number(lesson.cashPaidAmount || 0)
@@ -125,10 +127,9 @@ export const groupStudentLessonsByDay = (lessons) => {
   })
 }
 
-const durationLabel = (minutes) => {
-  const hours = Number(minutes || 0) / 60
-  return `${hours.toLocaleString('es-AR', { maximumFractionDigits: 2 })} h`
-}
+const hoursFor = (lessons) => lessons
+  .filter((lesson) => lesson.status === 'completed' && lesson.attendance === 'present')
+  .reduce((total, lesson) => total + Number(lesson.realDurationMinutes || 60) / 60, 0)
 const paymentTotalsFor = (lessons) => lessons
   .filter((lesson) => lesson.status === 'completed' && paidFor(lesson) > 0)
   .reduce((totals, lesson) => {
@@ -162,7 +163,8 @@ export async function exportMonthlyReport({
   const { default: writeXlsxFile } = await import('write-excel-file/browser')
   const subtitle = `${monthName} ${year} · Generado el ${new Date().toLocaleDateString('es-AR')}`
   const paymentTotals = paymentTotalsFor(lessons)
-  const summaryColumnCount = studentAccount ? 7 : 4
+  const totalHours = hoursFor(lessons)
+  const summaryColumnCount = studentAccount ? 8 : 5
 
   const summaryRows = [
     [titleCell(reportTitle, summaryColumnCount), ...Array(summaryColumnCount - 1).fill(null)],
@@ -172,15 +174,16 @@ export async function exportMonthlyReport({
     ? [
         ['Total facturado', metrics.totalBilled, 'Total cobrado', metrics.totalPaid, 'currency', 'currency'],
         ['Cobrado en efectivo', paymentTotals.cash, 'Cobrado por transferencia', paymentTotals.transfer, 'currency', 'currency'],
-        ['Total pendiente', metrics.totalDue, 'Clases dadas', metrics.attendedLessons, 'currency', 'number'],
+        ['Total pendiente', metrics.totalDue, 'Horas dadas', totalHours, 'currency', 'hours'],
         ['Asistencia', metrics.attendanceRate, '', null, 'percent', 'empty'],
       ]
     : [
         ['Total facturado', metrics.totalBilled, 'Total cobrado', metrics.totalPaid, 'currency', 'currency'],
         ['Cobrado en efectivo', paymentTotals.cash, 'Cobrado por transferencia', paymentTotals.transfer, 'currency', 'currency'],
         ['Total pendiente', metrics.totalDue, 'Alumnos con deuda', metrics.studentsWithDebt, 'currency', 'number'],
-        ['Clases dadas', metrics.attendedLessons, 'Ausencias', metrics.absentLessons, 'number', 'number'],
-        ['Asistencia', metrics.attendanceRate, 'Promedio por clase', metrics.averagePerClass, 'percent', 'currency'],
+        ['Clases dadas', metrics.attendedLessons, 'Horas dadas', totalHours, 'number', 'hours'],
+        ['Ausencias', metrics.absentLessons, 'Promedio por clase', metrics.averagePerClass, 'number', 'currency'],
+        ['Asistencia', metrics.attendanceRate, '', null, 'percent', 'empty'],
       ]
   const unclassifiedPayments = paymentTotals.mixed + paymentTotals.unspecified
   if (unclassifiedPayments > 0) {
@@ -198,7 +201,7 @@ export async function exportMonthlyReport({
     const value = (number, type) => ({
       ...numberCell(
         number,
-        type === 'currency' ? ARS_FORMAT : type === 'percent' ? '0.0%' : '#,##0',
+        type === 'currency' ? ARS_FORMAT : type === 'percent' ? '0.0%' : type === 'hours' ? '0.0 "h"' : '#,##0',
         background,
       ),
       fontSize: 15,
@@ -220,6 +223,7 @@ export async function exportMonthlyReport({
   if (studentAccount) {
     summaryRows.push([
       headerCell('Clase'),
+      headerCell('Horas'),
       headerCell('Valor de la clase'),
       headerCell('Pagó'),
       headerCell('En efectivo'),
@@ -233,10 +237,11 @@ export async function exportMonthlyReport({
       const paid = paidFor(lesson)
       const due = Math.max(0, Number(lesson.amount || 0) - paid)
       const lessonLabel = lesson.lessonCount > 1
-        ? `Clases ${Number(lessonDay)}/${Number(lessonMonth)} · ${durationLabel(lesson.realDurationMinutes)}`
-        : `Clase ${Number(lessonDay)}/${Number(lessonMonth)} · ${durationLabel(lesson.realDurationMinutes)}`
+        ? `Clases ${Number(lessonDay)}/${Number(lessonMonth)}`
+        : `Clase ${Number(lessonDay)}/${Number(lessonMonth)}`
       summaryRows.push([
         textCell(lessonLabel, background),
+        numberCell(lesson.realDurationMinutes / 60, '0.0 "h"', background),
         numberCell(lesson.amount, ARS_FORMAT, background),
         numberCell(paid, ARS_FORMAT, background),
         numberCell(Number(lesson.cashPaidAmount || 0), ARS_FORMAT, background),
@@ -251,6 +256,7 @@ export async function exportMonthlyReport({
     })
     summaryRows.push([
       { ...textCell('TOTAL', COLORS.paleBlue), fontWeight: 'bold', color: COLORS.navy },
+      { ...numberCell(totalHours, '0.0 "h"', COLORS.paleBlue), fontWeight: 'bold' },
       { ...numberCell(studentAccount.total, ARS_FORMAT, COLORS.paleBlue), fontWeight: 'bold' },
       { ...numberCell(studentAccount.paid, ARS_FORMAT, COLORS.paleBlue), fontWeight: 'bold' },
       { ...numberCell(paymentTotals.cash, ARS_FORMAT, COLORS.paleBlue), fontWeight: 'bold' },
@@ -265,6 +271,7 @@ export async function exportMonthlyReport({
   } else {
     summaryRows.push([
       headerCell('Alumno'),
+      headerCell('Horas'),
       headerCell('Total del mes'),
       headerCell('Pagó'),
       headerCell('Debe'),
@@ -273,6 +280,7 @@ export async function exportMonthlyReport({
       const background = index % 2 ? COLORS.white : '#f8fafc'
       summaryRows.push([
         textCell(account.student.name, background),
+        numberCell(hoursFor(account.lessons), '0.0 "h"', background),
         numberCell(account.total, ARS_FORMAT, background),
         numberCell(account.paid, ARS_FORMAT, background),
         {
@@ -295,7 +303,7 @@ export async function exportMonthlyReport({
       headerCell('Fecha', 14),
       headerCell('Alumno', 28),
       headerCell('Horario', 12),
-      headerCell('Duración', 14),
+      headerCell('Horas', 14),
       headerCell('Asistencia', 16),
       headerCell('Precio por hora', 18),
       headerCell('Valor clase', 18),
@@ -334,7 +342,7 @@ export async function exportMonthlyReport({
           }),
           background,
         ),
-        numberCell(Number(lesson.realDurationMinutes || 60) / 60, '0.0 "h"', background),
+        numberCell(lesson.attendance === 'present' ? Number(lesson.realDurationMinutes || 60) / 60 : 0, '0.0 "h"', background),
         {
           ...textCell(attendanceLabel, present ? COLORS.paleGreen : excused ? COLORS.paleBlue : COLORS.paleRed),
           fontWeight: 'bold',
@@ -367,8 +375,8 @@ export async function exportMonthlyReport({
       data: summaryRows,
       sheet: 'Resumen',
       columns: studentAccount
-        ? [{ width: 24 }, { width: 20 }, { width: 18 }, { width: 18 }, { width: 22 }, { width: 22 }, { width: 18 }]
-        : [{ width: 31 }, { width: 20 }, { width: 31 }, { width: 20 }],
+        ? [{ width: 26 }, { width: 22 }, { width: 24 }, { width: 22 }, { width: 22 }, { width: 24 }, { width: 24 }, { width: 22 }]
+        : [{ width: 34 }, { width: 22 }, { width: 26 }, { width: 22 }, { width: 22 }],
     },
   ]
   if (!studentAccount) sheets.push({

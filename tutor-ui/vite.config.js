@@ -6,9 +6,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/api': 'http://localhost:8787',
-      '/auth': 'http://localhost:8787',
-      '/health': 'http://localhost:8787',
+      // Local UI -> Sentinel reverse proxy -> local Go API.
+      '/api': 'http://127.0.0.1:8081',
+      '/health': 'http://127.0.0.1:8081',
     },
   },
 })

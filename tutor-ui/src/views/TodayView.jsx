@@ -53,6 +53,7 @@ export default function TodayView() {
   const [lessons, setLessons] = useState([])
   const [students, setStudents] = useState([])
   const [schools, setSchools] = useState([])
+  const [paidPaymentMethod, setPaidPaymentMethod] = useState('cash')
   const [modal, setModal] = useState(null)
   const moveInFlight = useRef(false)
   const [dialog, setDialog] = useState(null)
@@ -209,6 +210,7 @@ export default function TodayView() {
     attendance = 'present',
   ) => {
     if (paymentStatus === 'paid' && attendance === 'present') {
+      setPaidPaymentMethod('cash')
       setModal({ type: 'paid', lesson, label, paymentStatus, attendance })
       return
     }
@@ -216,7 +218,7 @@ export default function TodayView() {
   }
   const confirmPaidMethod = (event) => {
     event.preventDefault()
-    const paymentMethod = new FormData(event.currentTarget).get('paymentMethod')
+    const paymentMethod = paidPaymentMethod
     const current = modal
     setModal(null)
     showResultConfirmation(
@@ -284,11 +286,11 @@ export default function TodayView() {
             <p className="mb-5 text-xl text-slate-300">
               Elegí el medio de pago de {studentName(modal.lesson.studentId)}.
             </p>
-            <Field as="select" label="Medio de pago" name="paymentMethod" required>
-              <option value="">Elegí una opción</option>
-              <option value="cash">Efectivo</option>
-              <option value="transfer">Transferencia</option>
-            </Field>
+            <p className="text-lg font-semibold text-slate-200">Medio de pago</p>
+            <PaymentMethodButtons
+              value={paidPaymentMethod}
+              onChange={setPaidPaymentMethod}
+            />
             <BigButton className="mt-5 w-full bg-emerald-500 text-emerald-950">
               Continuar
             </BigButton>
@@ -479,6 +481,31 @@ export function Empty({ children }) {
     <p className="rounded-3xl border border-dashed border-slate-700 p-8 text-center text-lg text-slate-300">
       {children}
     </p>
+  )
+}
+
+function PaymentMethodButtons({ value, onChange }) {
+  return (
+    <div className="mt-2 grid grid-cols-2 gap-3" role="group" aria-label="Medio de pago">
+      {[
+        ['cash', 'Efectivo'],
+        ['transfer', 'Transferencia'],
+      ].map(([method, label]) => (
+        <button
+          key={method}
+          type="button"
+          onClick={() => onChange(method)}
+          aria-pressed={value === method}
+          className={`min-h-14 rounded-xl px-3 text-lg font-bold transition-colors ${
+            value === method
+              ? 'bg-emerald-500 text-emerald-950'
+              : 'bg-slate-800 text-slate-200'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
   )
 }
 

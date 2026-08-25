@@ -6,6 +6,7 @@ import {
   DollarSign,
   MessageCircle,
   Pencil,
+  Trash2,
   Undo2,
   UserRoundCheck,
   UsersRound,
@@ -18,6 +19,7 @@ import {
   getLessons,
   getSettings,
   getStudents,
+  deleteLesson,
   registerBatchPayment,
   registerLessonPayment,
   resetLessonPayment,
@@ -65,12 +67,12 @@ export default function MonthlyView() {
   const [students, setStudents] = useState([])
   const [lessons, setLessons] = useState([])
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState('due')
+  const [filter, setFilter] = useState('all')
   const [selectedId, setSelectedId] = useState('')
   const [priceModal, setPriceModal] = useState(false)
   const [paymentModal, setPaymentModal] = useState(null)
   const [paymentAmount, setPaymentAmount] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('cash')
   const [paymentError, setPaymentError] = useState('')
   const [exporting, setExporting] = useState(false)
   const [exportingStudentId, setExportingStudentId] = useState('')
@@ -161,13 +163,13 @@ export default function MonthlyView() {
   }
   const openLessonPayment = (lesson) => {
     setPaymentError('')
-    setPaymentMethod('')
+    setPaymentMethod('cash')
     setPaymentAmount(String(balanceFor(lesson)))
     setPaymentModal({ type: 'lesson', lesson })
   }
   const openAccountPayment = (account, full = false) => {
     setPaymentError('')
-    setPaymentMethod('')
+    setPaymentMethod('cash')
     setPaymentAmount(String(full ? account.due : ''))
     setPaymentModal({ type: 'account', account })
   }
@@ -207,7 +209,7 @@ export default function MonthlyView() {
       setDialog(null)
       setPaymentModal(null)
       setPaymentAmount('')
-      setPaymentMethod('')
+      setPaymentMethod('cash')
       setPaymentError('')
       load()
     } catch (error) {
@@ -225,6 +227,16 @@ export default function MonthlyView() {
     } catch {
       setDialog(null)
       setNotice('No pude cancelar ese pago.')
+    }
+  }
+  const removeLesson = async (lesson) => {
+    try {
+      await deleteLesson(lesson.id)
+      setDialog(null)
+      await load()
+    } catch (error) {
+      setDialog(null)
+      setNotice(error.message || 'No pude eliminar la clase.')
     }
   }
   const downloadReport = async () => {
@@ -356,7 +368,7 @@ export default function MonthlyView() {
           title={paymentModal.type === 'lesson'
             ? 'Cobrar esta clase'
             : `Registrar pago de ${paymentModal.account.student.name}`}
-          onClose={() => { setPaymentModal(null); setPaymentError(''); setPaymentMethod('') }}
+          onClose={() => { setPaymentModal(null); setPaymentError(''); setPaymentMethod('cash') }}
         >
           <form onSubmit={submitPayment}>
             <p className="mb-5 text-lg text-slate-300">
@@ -380,20 +392,14 @@ export default function MonthlyView() {
               required
             />
             <div className="mt-4">
-              <Field
-                as="select"
-                label="¿Cómo pagó?"
+              <p className="text-lg font-semibold text-slate-200">¿Cómo pagó?</p>
+              <PaymentMethodButtons
                 value={paymentMethod}
-                onChange={(event) => {
-                  setPaymentMethod(event.target.value)
+                onChange={(method) => {
+                  setPaymentMethod(method)
                   setPaymentError('')
                 }}
-                required
-              >
-                <option value="">Elegí una opción</option>
-                <option value="cash">Efectivo</option>
-                <option value="transfer">Transferencia</option>
-              </Field>
+              />
             </div>
             {paymentError && (
               <div
@@ -503,7 +509,7 @@ export default function MonthlyView() {
           />
         </div>
         <div className="mt-4 grid grid-cols-3 gap-3">
-          {[['due', 'Deben'], ['paid', 'Pagaron'], ['all', 'Todos']].map(([id, label]) => (
+          {[['all', 'Todos'], ['due', 'Deben'], ['paid', 'Pagados']].map(([id, label]) => (
             <button
               key={id}
               onClick={() => setFilter(id)}
@@ -622,20 +628,34 @@ export default function MonthlyView() {
                       </button>
                     )}
                   </div>
-                  {paid > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-x-5 gap-y-3">
+                    {paid > 0 && (
+                      <button
+                        onClick={() => setDialog({
+                          title: 'Cancelar pago',
+                          message: '¿Seguro que querés cancelar el pago registrado para esta clase? Volverá a figurar como deuda.',
+                          confirmLabel: 'Sí, cancelar pago',
+                          danger: true,
+                          onConfirm: () => resetPayment(lesson),
+                        })}
+                        className="text-lg font-bold text-rose-300"
+                      >
+                        <Undo2 className="inline" /> Cancelar pago
+                      </button>
+                    )}
                     <button
                       onClick={() => setDialog({
-                        title: 'Cancelar pago',
-                        message: '¿Seguro que querés cancelar el pago registrado para esta clase? Volverá a figurar como deuda.',
-                        confirmLabel: 'Sí, cancelar pago',
+                        title: 'Eliminar clase',
+                        message: '¿Seguro que querés eliminar esta clase? Se borrará también cualquier pago asociado y no se podrá recuperar.',
+                        confirmLabel: 'Sí, eliminar clase',
                         danger: true,
-                        onConfirm: () => resetPayment(lesson),
+                        onConfirm: () => removeLesson(lesson),
                       })}
-                      className="mt-4 text-lg font-bold text-rose-300"
+                      className="text-lg font-bold text-rose-300"
                     >
-                      <Undo2 className="inline" /> Cancelar pago
+                      <Trash2 className="inline" /> Eliminar clase
                     </button>
-                  )}
+                  </div>
                 </article>
               )
             })}
@@ -672,6 +692,31 @@ function SmallMetric({ label, value }) {
     <div className="rounded-2xl bg-slate-900 p-4">
       <p className="text-lg text-slate-400">{label}</p>
       <p className="text-2xl font-bold text-white">{money(value)}</p>
+    </div>
+  )
+}
+
+function PaymentMethodButtons({ value, onChange }) {
+  return (
+    <div className="mt-2 grid grid-cols-2 gap-3" role="group" aria-label="Medio de pago">
+      {[
+        ['cash', 'Efectivo'],
+        ['transfer', 'Transferencia'],
+      ].map(([method, label]) => (
+        <button
+          key={method}
+          type="button"
+          onClick={() => onChange(method)}
+          aria-pressed={value === method}
+          className={`min-h-14 rounded-xl px-3 text-lg font-bold transition-colors ${
+            value === method
+              ? 'bg-emerald-500 text-emerald-950'
+              : 'bg-slate-800 text-slate-200'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   )
 }

@@ -1,5 +1,7 @@
 async function authRequest(path, options = {}) {
-  if (import.meta.env.VITE_DEMO_MODE === 'true') return { authenticated: true }
+  if (import.meta.env.VITE_DEMO_MODE === 'true' || import.meta.env.VITE_LOCAL_API_MODE === 'true') {
+    return { authenticated: true }
+  }
   const response = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...options })
   const data = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(data.error || 'No se pudo conectar con el servidor.')

@@ -17,15 +17,37 @@ const HOURS = [
   '08:00', '09:00', '10:00', '11:00', '14:00',
   '15:00', '16:00', '17:00', '18:00', '19:00',
 ]
+const EMPTY_LESSONS = []
 const DAYS = [
   'Lunes', 'Martes', 'Miércoles', 'Jueves',
   'Viernes', 'Sábado', 'Domingo',
 ]
+const ARGENTINA_TIME_ZONE = 'America/Argentina/Buenos_Aires'
 const dateKey = (date) => [
   date.getFullYear(),
   String(date.getMonth() + 1).padStart(2, '0'),
   String(date.getDate()).padStart(2, '0'),
 ].join('-')
+const argentinaDateParts = (value) => Object.fromEntries(
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: ARGENTINA_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(value))
+    .filter((part) => part.type !== 'literal')
+    .map((part) => [part.type, part.value]),
+)
+const argentinaDateKey = (value) => {
+  const parts = argentinaDateParts(value)
+  return `${parts.year}-${parts.month}-${parts.day}`
+}
+const argentinaHour = (value) => Number(argentinaDateParts(value).hour)
+const argentinaDateTime = (day, hour) => (
+  new Date(`${dateKey(day)}T${hour}:00-03:00`).toISOString()
+)
 const addDays = (date, count) => {
   const copy = new Date(date)
   copy.setDate(copy.getDate() + count)
@@ -75,8 +97,11 @@ export default function WeeklyView() {
   const [advanceLesson, setAdvanceLesson] = useState(null)
   const [advancePaymentMethod, setAdvancePaymentMethod] = useState('cash')
   const [savingAdvance, setSavingAdvance] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const todayRef = useRef(null)
   const addingStudentsRef = useRef(false)
+  const loadVersionRef = useRef(0)
+  const scrolledWeekRef = useRef('')
 
   const days = useMemo(
     () => Array.from(
@@ -86,25 +111,43 @@ export default function WeeklyView() {
     [start],
   )
   const load = useCallback(async () => {
+    const loadVersion = loadVersionRef.current + 1
+    loadVersionRef.current = loadVersion
+    setIsLoading(true)
     try {
       const [studentList, ...items] = await Promise.all([
         getStudents(),
         ...days.map((day) => getLessons(dateKey(day))),
       ])
+      if (loadVersion !== loadVersionRef.current) return
       setStudents(studentList)
       setLessons(items.flat())
       setNotice('')
-    } catch {
-      setNotice('No pude cargar esta semana.')
+    } catch (error) {
+      if (loadVersion !== loadVersionRef.current) return
+      setNotice(error.message || 'No pude cargar esta semana.')
+    } finally {
+      if (loadVersion === loadVersionRef.current) setIsLoading(false)
     }
   }, [days])
   useEffect(() => { load() }, [load])
   useEffect(() => {
     const today = dateKey(new Date())
-    if (dateKey(start) <= today && today <= dateKey(days.at(-1))) {
-      todayRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const weekKey = `${dateKey(start)}-${dateKey(days.at(-1))}`
+    if (isLoading || scrolledWeekRef.current === weekKey || dateKey(start) > today || today > dateKey(days.at(-1))) return undefined
+
+    let frameId
+    const timerId = window.setTimeout(() => {
+      frameId = window.requestAnimationFrame(() => {
+        todayRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        scrolledWeekRef.current = weekKey
+      })
+    }, 220)
+    return () => {
+      window.clearTimeout(timerId)
+      if (frameId) window.cancelAnimationFrame(frameId)
     }
-  }, [start, days])
+  }, [start, days, isLoading])
 
   const previous = () => {
     const value = addDays(start, -7)
@@ -118,19 +161,32 @@ export default function WeeklyView() {
         : new Date(start.getFullYear(), start.getMonth() + 1, 1),
     )
   }
-  const slotLessons = slot
-    ? lessons.filter((lesson) => (
-      dateKey(new Date(lesson.date)) === dateKey(slot.day)
-      && new Date(lesson.date).getHours() === Number(slot.hour.slice(0, 2))
-      && lesson.status !== 'cancelled'
+  const lessonsBySlot = useMemo(() => {
+    const grouped = new Map()
+    lessons.forEach((lesson) => {
+      if (lesson.status === 'cancelled') return
+      const key = `${argentinaDateKey(lesson.date)}-${argentinaHour(lesson.date)}`
+      grouped.set(key, [...(grouped.get(key) || []), lesson])
+    })
+    return grouped
+  }, [lessons])
+  const slotLessons = useMemo(() => {
+    if (!slot) return EMPTY_LESSONS
+    return lessonsBySlot.get(`${dateKey(slot.day)}-${Number(slot.hour.slice(0, 2))}`) || EMPTY_LESSONS
+  }, [slot, lessonsBySlot])
+  const available = useMemo(() => {
+    const existingIds = new Set(slotLessons.map((lesson) => lesson.studentId))
+    const normalizedSearch = search.toLowerCase()
+    return students.filter((student) => (
+      student.isActive
+      && !existingIds.has(student.id)
+      && student.name.toLowerCase().includes(normalizedSearch)
     ))
-    : []
-  const existingIds = new Set(slotLessons.map((lesson) => lesson.studentId))
-  const available = students.filter((student) => (
-    student.isActive
-    && !existingIds.has(student.id)
-    && student.name.toLowerCase().includes(search.toLowerCase())
-  ))
+  }, [students, slotLessons, search])
+  const studentsById = useMemo(
+    () => new Map(students.map((student) => [student.id, student])),
+    [students],
+  )
   const visibleResultOptions = Number(resultLesson?.paidAmount || 0) > 0
     ? RESULT_OPTIONS.filter((option) => !['present_paid', 'present_pending'].includes(option.value))
     : RESULT_OPTIONS.filter((option) => option.value !== 'present_prepaid')
@@ -141,23 +197,26 @@ export default function WeeklyView() {
     addingStudentsRef.current = true
     setAddingStudents(true)
     try {
-      const [hour, minute] = slot.hour.split(':')
-      const date = new Date(slot.day)
-      date.setHours(Number(hour), Number(minute), 0, 0)
       const selectedStudents = [...new Set(chosen)]
-      await Promise.all(selectedStudents.map((studentId) => createLesson({
+      const results = await Promise.allSettled(selectedStudents.map((studentId) => createLesson({
         studentId,
-        date: date.toISOString(),
+        date: argentinaDateTime(slot.day, slot.hour),
         durationMinutes: 60,
       })))
+      const failures = results.filter((result) => result.status === 'rejected')
+      if (failures.length === selectedStudents.length) {
+        throw failures[0].reason
+      }
       setSlot(null)
       setChosen([])
       setSearch('')
       await load()
-    } catch {
-      setNotice(
-        'No pude agregar el turno. El alumno puede estar ya cargado en ese horario.',
-      )
+      if (failures.length) {
+        const firstError = failures[0].reason
+        setNotice(`${failures.length} turno${failures.length === 1 ? '' : 's'} no se pudo${failures.length === 1 ? '' : 'ieron'} guardar. ${firstError?.message || ''}`.trim())
+      }
+    } catch (error) {
+      setNotice(error.message || 'No pude agregar el turno.')
     } finally {
       addingStudentsRef.current = false
       setAddingStudents(false)
@@ -168,9 +227,9 @@ export default function WeeklyView() {
       await cancelLesson(lesson.id)
       setDialog(null)
       load()
-    } catch {
+    } catch (error) {
       setDialog(null)
-      setNotice('No pude eliminar ese alumno del turno.')
+      setNotice(error.message || 'No pude eliminar ese alumno del turno.')
     }
   }
   const askRemove = (lesson, day, hour) => {
@@ -239,9 +298,9 @@ export default function WeeklyView() {
       setResultLesson(null)
       setDialog(null)
       await load()
-    } catch {
+    } catch (error) {
       setDialog(null)
-      setNotice('No pude registrar el resultado de esa clase.')
+      setNotice(error.message || 'No pude registrar el resultado de esa clase.')
     }
   }
   const askSaveResult = (event) => {
@@ -326,11 +385,11 @@ export default function WeeklyView() {
                   <input
                     type="checkbox"
                     checked={chosen.includes(student.id)}
-                    onChange={() => setChosen(
-                      chosen.includes(student.id)
-                        ? chosen.filter((id) => id !== student.id)
-                        : [...chosen, student.id],
-                    )}
+                    onChange={() => setChosen((current) => (
+                      current.includes(student.id)
+                        ? current.filter((id) => id !== student.id)
+                        : [...current, student.id]
+                    ))}
                   />
                   {student.name}
                 </label>
@@ -359,7 +418,7 @@ export default function WeeklyView() {
           <form onSubmit={askSaveResult}>
             <p className="text-xl text-slate-300">
               {studentName(resultLesson)} ·{' '}
-              {new Date(resultLesson.date).toLocaleDateString('es-AR', {
+              {new Date(resultLesson.date).toLocaleDateString('es-AR', { timeZone: ARGENTINA_TIME_ZONE,
                 day: 'numeric',
                 month: 'long',
               })}
@@ -381,14 +440,7 @@ export default function WeeklyView() {
             {outcome === 'present_paid' && (
               <label className="mt-5 block text-lg font-semibold text-slate-200">
                 Medio de pago
-                <select
-                  value={paymentMethod}
-                  onChange={(event) => setPaymentMethod(event.target.value)}
-                  className="mt-2 min-h-14 w-full rounded-xl border border-slate-600 bg-slate-800 px-4 text-lg text-white"
-                >
-                  <option value="cash">Efectivo</option>
-                  <option value="transfer">Transferencia</option>
-                </select>
+                <PaymentMethodButtons value={paymentMethod} onChange={setPaymentMethod} />
               </label>
             )}
             <BigButton
@@ -409,7 +461,7 @@ export default function WeeklyView() {
           <form onSubmit={saveAdvancePayment}>
             <p className="text-xl text-slate-300">
               {studentName(advanceLesson)} ·{' '}
-              {new Date(advanceLesson.date).toLocaleDateString('es-AR', {
+              {new Date(advanceLesson.date).toLocaleDateString('es-AR', { timeZone: ARGENTINA_TIME_ZONE,
                 day: 'numeric',
                 month: 'long',
               })}
@@ -419,14 +471,7 @@ export default function WeeklyView() {
             </p>
             <label className="mt-5 block text-lg font-semibold text-slate-200">
               Medio de pago
-              <select
-                value={advancePaymentMethod}
-                onChange={(event) => setAdvancePaymentMethod(event.target.value)}
-                className="mt-2 min-h-14 w-full rounded-xl border border-slate-600 bg-slate-800 px-4 text-lg text-white"
-              >
-                <option value="cash">Efectivo</option>
-                <option value="transfer">Transferencia</option>
-              </select>
+              <PaymentMethodButtons value={advancePaymentMethod} onChange={setAdvancePaymentMethod} />
             </label>
             <BigButton
               className="mt-6 w-full bg-emerald-500 text-emerald-950"
@@ -454,19 +499,13 @@ export default function WeeklyView() {
             </h2>
             <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {HOURS.map((hour) => {
-                const items = lessons.filter((lesson) => (
-                  lesson.status !== 'cancelled'
-                  && dateKey(new Date(lesson.date)) === dateKey(day)
-                  && new Date(lesson.date).getHours() === Number(hour.slice(0, 2))
-                ))
+                const items = lessonsBySlot.get(`${dateKey(day)}-${Number(hour.slice(0, 2))}`) || []
                 return (
                   <div key={hour} className="min-h-36 rounded-2xl bg-slate-800 p-4">
                     <p className="text-2xl font-bold text-white">{hour}</p>
                     {items.map((lesson) => {
                       const name = shortName(
-                        students.find(
-                          (student) => student.id === lesson.studentId,
-                        )?.name,
+                        studentsById.get(lesson.studentId)?.name,
                       )
                       return (
                         <div
@@ -515,7 +554,7 @@ export default function WeeklyView() {
                               </button>
                             </div>
                           )}
-                          {lesson.status === 'scheduled' && dateKey(day) <= dateKey(new Date()) && (
+                          {lesson.status === 'scheduled' && new Date(lesson.date) <= new Date() && (
                             <button
                               onClick={() => openResult(lesson)}
                               className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-indigo-500 px-3 text-base font-bold text-white"
@@ -550,6 +589,31 @@ function Notice({ text, close }) {
     <div className="mt-5 rounded-2xl border border-rose-400/40 bg-rose-500/10 p-5 text-lg text-rose-100">
       {text}
       <button onClick={close} className="ml-3 font-bold underline">Cerrar</button>
+    </div>
+  )
+}
+
+function PaymentMethodButtons({ value, onChange }) {
+  return (
+    <div className="mt-2 grid grid-cols-2 gap-3" role="group" aria-label="Medio de pago">
+      {[
+        ['cash', 'Efectivo'],
+        ['transfer', 'Transferencia'],
+      ].map(([method, label]) => (
+        <button
+          key={method}
+          type="button"
+          onClick={() => onChange(method)}
+          aria-pressed={value === method}
+          className={`min-h-14 rounded-xl px-3 text-lg font-bold transition-colors ${
+            value === method
+              ? 'bg-emerald-500 text-emerald-950'
+              : 'bg-slate-800 text-slate-200'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   )
 }

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "sentinel": "vite --mode sentinel",
     "demo": "vite --mode demo",
     "dev:worker": "wrangler dev",
     "build": "vite build",
