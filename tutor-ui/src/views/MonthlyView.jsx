@@ -133,11 +133,12 @@ export default function MonthlyView() {
   ))
   const selected = accounts.find((account) => account.student.id === selectedId)
 
-  useEffect(() => {
-    if (selected && studentSummaryRef.current) {
-      studentSummaryRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }
-  }, [selected])
+  const selectStudent = (studentId) => {
+    setSelectedId(studentId)
+    window.requestAnimationFrame(() => {
+      studentSummaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
 
   const totalBilled = accounts.reduce((sum, account) => sum + account.total, 0)
   const totalPaid = accounts.reduce((sum, account) => sum + account.paid, 0)
@@ -534,7 +535,7 @@ export default function MonthlyView() {
           {visibleAccounts.map((account) => (
             <button
               key={account.student.id}
-              onClick={() => setSelectedId(account.student.id)}
+              onClick={() => selectStudent(account.student.id)}
               className={`rounded-3xl border p-6 text-left ${
                 selectedId === account.student.id
                   ? 'border-indigo-400 bg-indigo-500/10'
