@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CalendarCheck2,
   CheckCircle2,
@@ -80,6 +80,7 @@ export default function MonthlyView() {
   const [whatsappModal, setWhatsappModal] = useState(null)
   const [dialog, setDialog] = useState(null)
   const [notice, setNotice] = useState('')
+  const studentSummaryRef = useRef(null)
 
   const dates = useMemo(() => monthDates(year, month), [year, month])
   const load = useCallback(async () => {
@@ -131,6 +132,12 @@ export default function MonthlyView() {
     )
   ))
   const selected = accounts.find((account) => account.student.id === selectedId)
+
+  useEffect(() => {
+    if (selected && studentSummaryRef.current) {
+      studentSummaryRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [selected])
 
   const totalBilled = accounts.reduce((sum, account) => sum + account.total, 0)
   const totalPaid = accounts.reduce((sum, account) => sum + account.paid, 0)
@@ -545,7 +552,10 @@ export default function MonthlyView() {
       </section>
 
       {selected && (
-        <section className="mt-8 rounded-3xl border border-indigo-500/30 bg-indigo-500/5 p-6">
+        <section
+          ref={studentSummaryRef}
+          className="mt-8 rounded-3xl border border-indigo-500/30 bg-indigo-500/5 p-6"
+        >
           <h2 className="text-3xl font-bold text-white">
             Cuenta de {selected.student.name}
           </h2>
