@@ -78,11 +78,21 @@ export default function MonthlyView() {
   const [exportingStudentId, setExportingStudentId] = useState('')
   const [exportSuccess, setExportSuccess] = useState('')
   const [whatsappModal, setWhatsappModal] = useState(null)
+  const [whatsappSent, setWhatsappSent] = useState({})
   const [dialog, setDialog] = useState(null)
   const [notice, setNotice] = useState('')
   const studentSummaryRef = useRef(null)
 
   const dates = useMemo(() => monthDates(year, month), [year, month])
+  const whatsappMonthKey = `softwaremama:whatsapp-sent:${year}-${String(month + 1).padStart(2, '0')}`
+
+  useEffect(() => {
+    try {
+      setWhatsappSent(JSON.parse(localStorage.getItem(whatsappMonthKey) || '{}'))
+    } catch {
+      setWhatsappSent({})
+    }
+  }, [whatsappMonthKey])
   const load = useCallback(async () => {
     try {
       const [settings, people, ...items] = await Promise.all([
@@ -310,13 +320,22 @@ export default function MonthlyView() {
   }
   const sendWhatsappSummary = (contact) => {
     try {
+      const account = whatsappModal.account
       openWhatsappSummary({
         phone: contact.phone,
         message: monthlyWhatsappMessage({
           monthName: MONTHS[month],
           year,
-          account: whatsappModal.account,
+          account,
         }),
+      })
+      setWhatsappSent((previous) => {
+        const next = {
+          ...previous,
+          [account.student.id]: { contactName: contact.name, openedAt: new Date().toISOString() },
+        }
+        localStorage.setItem(whatsappMonthKey, JSON.stringify(next))
+        return next
       })
       setWhatsappModal(null)
     } catch (error) {
@@ -599,6 +618,11 @@ export default function MonthlyView() {
               <MessageCircle /> Enviar por WhatsApp
             </BigButton>
           </div>
+          {whatsappSent[selected.student.id] && (
+            <p className="mt-3 rounded-xl bg-emerald-500/10 px-4 py-3 text-lg font-semibold text-emerald-200">
+              WhatsApp abierto para {whatsappSent[selected.student.id].contactName} este mes.
+            </p>
+          )}
           <div className="mt-6 space-y-4">
             {selected.lessons.map((lesson) => {
               const paid = paidFor(lesson)

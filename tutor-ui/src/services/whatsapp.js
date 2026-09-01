@@ -5,9 +5,15 @@ const relationshipLabel = (value) => ({
   other: 'Tutor/a',
 }[value] || value || 'Tutor/a')
 
+const isWhatsappPhone = (value) => {
+  const raw = String(value || '').trim()
+  const digits = raw.replace(/\D/g, '')
+  return Boolean(raw) && !/[a-záéíóúñ]/i.test(raw) && digits.length >= 8 && digits.length <= 15
+}
+
 export function whatsappContactsFor(student) {
   const candidates = []
-  if (student.phone?.trim()) {
+  if (isWhatsappPhone(student.phone)) {
     candidates.push({
       id: `student-${student.id}`,
       name: student.name,
@@ -16,7 +22,7 @@ export function whatsappContactsFor(student) {
     })
   }
   ;(student.guardians || []).forEach((guardian, index) => {
-    if (!guardian.phone?.trim()) return
+    if (!isWhatsappPhone(guardian.phone)) return
     candidates.push({
       id: guardian.id || `guardian-${index}`,
       name: guardian.name,
