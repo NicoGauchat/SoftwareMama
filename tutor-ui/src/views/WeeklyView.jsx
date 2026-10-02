@@ -54,9 +54,6 @@ const addDays = (date, count) => {
   return copy
 }
 const firstWeekDay = (date) => addDays(date, -((date.getDay() + 6) % 7))
-const finalWeek = (date) => (
-  addDays(new Date(date.getFullYear(), date.getMonth() + 1, 0), -6)
-)
 const currentWeekSegment = (date) => {
   const monday = firstWeekDay(date)
   return monday.getMonth() === date.getMonth()
@@ -150,16 +147,10 @@ export default function WeeklyView() {
   }, [start, days, isLoading])
 
   const previous = () => {
-    const value = addDays(start, -7)
-    setStart(value.getMonth() === start.getMonth() ? value : finalWeek(value))
+    setStart(currentWeekSegment(addDays(start, -1)))
   }
   const next = () => {
-    const value = addDays(start, 7)
-    setStart(
-      value.getMonth() === start.getMonth()
-        ? value
-        : new Date(start.getFullYear(), start.getMonth() + 1, 1),
-    )
+    setStart(currentWeekSegment(addDays(days.at(-1), 1)))
   }
   const lessonsBySlot = useMemo(() => {
     const grouped = new Map()
