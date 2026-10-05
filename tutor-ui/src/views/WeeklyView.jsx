@@ -102,7 +102,7 @@ export default function WeeklyView() {
 
   const days = useMemo(
     () => Array.from(
-      { length: 7 },
+      { length: 7 - ((start.getDay() + 6) % 7) },
       (_, index) => addDays(start, index),
     ).filter((day) => day.getMonth() === start.getMonth()),
     [start],
